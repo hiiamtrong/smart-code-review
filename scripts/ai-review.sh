@@ -143,7 +143,8 @@ fi
 
 if echo "$REVIEW_JSON" | jq empty 2>/dev/null; then
   echo "✅ Valid JSON format received"
-  echo "$REVIEW_JSON" > ai-output.jsonl
+  # Convert JSON array to line-delimited JSON for reviewdog
+  echo "$REVIEW_JSON" | jq -c '.[]' > ai-output.jsonl
 else
   echo "⚠️ Invalid JSON format, creating fallback format..."
   echo "📄 Raw AI response (first 200 chars):"
@@ -183,14 +184,9 @@ if [[ -n "$GITHUB_TOKEN" ]]; then
       echo ""
       echo "🚀 Running reviewdog with structured AI response..."
 
-      # Convert JSON array to line-delimited JSON for reviewdog
-      if echo "$REVIEW_JSON" | jq -c '.[]' > ai-output-lines.jsonl 2>/dev/null; then
-        echo "✅ Converted to JSONL format"
-        INPUT_FILE="ai-output-lines.jsonl"
-      else
-        echo "⚠️ Using single-line format"
-        INPUT_FILE="ai-output.jsonl"
-      fi
+      # Use the already converted JSONL file
+      INPUT_FILE="ai-output.jsonl"
+      echo "✅ Using line-delimited JSON format"
 
       # Try github-pr-review reporter with structured input
       if ! cat "$INPUT_FILE" | $HOME/bin/reviewdog \
@@ -216,11 +212,7 @@ if [[ -n "$GITHUB_TOKEN" ]]; then
     # Local testing - use local reporter to avoid API issues
     echo "⚠️ Local testing detected, using local reporter"
     if [[ -f ai-output.jsonl ]]; then
-      if echo "$REVIEW_JSON" | jq -c '.[]' > ai-output-lines.jsonl 2>/dev/null; then
-        cat ai-output-lines.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local
-      else
-        cat ai-output.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local
-      fi
+      cat ai-output.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local
     fi
   fi
 else
@@ -229,11 +221,7 @@ else
   # Show the review locally
   if [[ -f ai-output.jsonl ]]; then
     echo "🔍 AI Review Summary:"
-    if echo "$REVIEW_JSON" | jq -c '.[]' > ai-output-lines.jsonl 2>/dev/null; then
-      cat ai-output-lines.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local 2>/dev/null || echo "Review saved to files"
-    else
-      cat ai-output.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local 2>/dev/null || echo "Review saved to files"
-    fi
+    cat ai-output.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local 2>/dev/null || echo "Review saved to ai-output.jsonl"
   fi
 fi
 
