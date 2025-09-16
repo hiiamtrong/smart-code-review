@@ -24,4 +24,8 @@ fi
 
 echo "➡️ Detected language: $LANG"
 
-bash $(dirname "$0")/ai-review.sh $LANG
+# Export environment variables for the AI review script
+export DETECTED_LANGUAGE="$LANG"
+
+# Run AI review script (it will handle both language-specific linting and AI review)
+bash $(dirname "$0")/ai-review.sh

@@ -89,5 +89,14 @@ EOF
 # Hiển thị kết quả review
 echo "📝 AI Review Output:"
 echo "$REVIEW"
-# Gửi vào reviewdog
-cat ai-output.json | reviewdog -f=rdjson -name="ai-review" -reporter=github-pr-review
+
+# Check if GitHub token is available for reviewdog
+if [[ -n "$GITHUB_TOKEN" ]]; then
+  echo "🚀 Posting review via reviewdog..."
+  # Set the reviewdog environment variable and post to GitHub
+  export REVIEWDOG_GITHUB_API_TOKEN="$GITHUB_TOKEN"
+  cat ai-output.json | reviewdog -f=rdjson -name="ai-review" -reporter=github-pr-review
+else
+  echo "ℹ️ No GITHUB_TOKEN available, skipping reviewdog posting"
+  echo "📄 Review JSON output saved to ai-output.json"
+fi
