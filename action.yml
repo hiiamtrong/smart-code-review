@@ -1,0 +1,14 @@
+name: "Smart Code Review"
+description: "Detect project language and run appropriate code review tools with reviewdog"
+author: "Your Team"
+inputs:
+  github_token:
+    description: "GITHUB_TOKEN for PR comments"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Detect and run review
+      shell: bash
+      run: |
+        GITHUB_TOKEN=${{ inputs.github_token }} bash ${{ github.action_path }}/scripts/detect-language.sh
