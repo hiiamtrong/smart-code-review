@@ -64,10 +64,20 @@ External tools used:
 
 ## Testing Strategy
 
-Since this is a GitHub Action:
-1. **Manual Script Testing**: Run individual scripts with proper environment variables
-2. **Integration Testing**: Test full workflow in a test repository with PR
-3. **Local Action Testing**: Use `act` tool if available for local GitHub Actions testing
+### **GitHub Actions Testing (Recommended)**
+1. **Repository Setup**: Ensure proper permissions in workflow and repository settings
+2. **Create PR**: Push changes and create pull request to trigger action
+3. **Check Results**: Review AI-powered comments posted directly to PR
+
+### **Local Testing**
+1. **Script Testing**: Run with environment variables - uses local reporter automatically
+2. **With GitHub API**: Use Personal Access Token for full GitHub integration testing
+3. **Without API**: Review output saved to `ai-output.json`
+
+### **Required Permissions**
+- **Workflow**: `contents: read`, `pull-requests: write`, `checks: write`
+- **Repository Settings**: Enable "Read and write permissions" for GitHub Actions
+- **Local Testing**: Personal Access Token with `repo` and `pull_requests` scopes
 
 ## File Structure
 
