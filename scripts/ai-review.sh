@@ -63,9 +63,22 @@ if [[ ! "$OPENAI_API_KEY" =~ ^sk-[a-zA-Z0-9] ]]; then
 fi
 
 echo "🤖 Sending to AI for review..."
+echo "🔍 Sample diff content (first 10 lines):"
+echo "$DIFF" | head -10
 
 # Request OpenAI to return reviewdog-compatible diagnostic format
-SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback in reviewdog diagnostic format. Return a JSON object with this exact structure: {\"source\": {\"name\": \"ai-review\", \"url\": \"\"}, \"severity\": \"ERROR\", \"diagnostics\": [{\"message\": \"Issue description\", \"location\": {\"path\": \"filename.ext\", \"range\": {\"start\": {\"line\": NUMBER, \"column\": NUMBER}, \"end\": {\"line\": NUMBER, \"column\": NUMBER}}}, \"severity\": \"ERROR\"|\"WARNING\"|\"INFO\", \"code\": {\"value\": \"issue-code\", \"url\": \"\"}}]}. Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions. Extract actual filenames and line numbers from the diff. Group all issues in the diagnostics array. CRITICAL: Return ONLY the raw JSON object with no markdown formatting, no explanations, no code blocks, no other text."
+SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback in reviewdog diagnostic format.
+
+CRITICAL INSTRUCTIONS:
+1. Extract EXACT file paths from the diff (look for +++ b/filename patterns)
+2. Calculate EXACT line numbers by counting from diff context (look for @@ -old,count +new,count @@ patterns)
+3. For each issue, provide the precise line number where the problem occurs
+
+Return a JSON object with this exact structure: {\"source\": {\"name\": \"ai-review\", \"url\": \"\"}, \"severity\": \"ERROR\", \"diagnostics\": [{\"message\": \"Issue description\", \"location\": {\"path\": \"exact_filename_from_diff\", \"range\": {\"start\": {\"line\": EXACT_LINE_NUMBER, \"column\": EXACT_COLUMN}, \"end\": {\"line\": EXACT_LINE_NUMBER, \"column\": EXACT_COLUMN}}}, \"severity\": \"ERROR\"|\"WARNING\"|\"INFO\", \"code\": {\"value\": \"issue-type\", \"url\": \"\"}}]}.
+
+Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions.
+
+CRITICAL: Return ONLY the raw JSON object with no markdown formatting, no explanations, no code blocks, no other text."
 
 # Make the API call with better error handling
 echo "📡 Making API request to OpenAI..."
