@@ -51,65 +51,63 @@ echo "🤖 Sending to AI for review..."
 # Escape the diff content for JSON
 DIFF_ESCAPED=$(echo "$DIFF" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '\r' | sed 's/\r/\\n/g')
 
-# Gửi diff đến AI API (ví dụ OpenAI)
-REVIEW=$(curl -s https://api.openai.com/v1/chat/completions \
+# Request OpenAI to return reviewdog-compatible JSON format
+SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback as a JSON array where each item follows this exact format:
+
+{
+  \"source\": {\"name\": \"ai-review\", \"url\": \"\"},
+  \"severity\": \"INFO\" | \"WARNING\" | \"ERROR\",
+  \"message\": {\"text\": \"Your specific feedback here\"},
+  \"location\": {
+    \"path\": \"filename.ext\",
+    \"range\": {
+      \"start\": {\"line\": NUMBER, \"column\": 1},
+      \"end\": {\"line\": NUMBER, \"column\": 1}
+    }
+  }
+}
+
+Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions. Extract actual filenames and line numbers from the diff. Return ONLY the JSON array, no other text."
+
+REVIEW_JSON=$(curl -s https://api.openai.com/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{
     \"model\": \"gpt-4o-mini\",
     \"messages\": [
-      {\"role\": \"system\", \"content\": \"You are a code reviewer. Analyze the diff and provide concise, actionable feedback focusing on bugs, security issues, and code quality improvements. Be specific about line numbers when possible.\"},
+      {\"role\": \"system\", \"content\": \"$SYSTEM_PROMPT\"},
       {\"role\": \"user\", \"content\": \"$DIFF_ESCAPED\"}
     ]
   }" 2>/dev/null | jq -r '.choices[0].message.content' 2>/dev/null)
 
 # Check if API call was successful
-if [[ -z "$REVIEW" || "$REVIEW" == "null" ]]; then
+if [[ -z "$REVIEW_JSON" || "$REVIEW_JSON" == "null" ]]; then
   echo "❌ Failed to get AI review response"
   exit 1
 fi
 
 echo "✅ AI review completed"
 
-# Convert output to proper rdjson format for reviewdog
-echo "🔧 Processing AI review for reviewdog..."
+# Validate and clean the JSON response
+echo "🔍 Validating AI response format..."
+if echo "$REVIEW_JSON" | jq empty 2>/dev/null; then
+  echo "✅ Valid JSON format received"
+  echo "$REVIEW_JSON" > ai-output.jsonl
+else
+  echo "⚠️ Invalid JSON format, creating fallback format..."
+  # Fallback: create a single general comment
+  REVIEW_ESCAPED=$(echo "$REVIEW_JSON" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '\r' | sed 's/\r/\\n/g')
+  echo "{\"source\":{\"name\":\"ai-review\",\"url\":\"\"},\"severity\":\"INFO\",\"message\":{\"text\":\"🤖 AI Code Review:\\n\\n$REVIEW_ESCAPED\"},\"location\":{\"path\":\"README.md\",\"range\":{\"start\":{\"line\":1,\"column\":1},\"end\":{\"line\":1,\"column\":1}}}}" > ai-output.jsonl
+fi
 
-# Create multiple focused review comments based on common issues
-# First, save the full review as a general comment
-REVIEW_ESCAPED=$(echo "$REVIEW" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '\r' | sed 's/\r/\\n/g')
-
-# Create a JSON array with the main review
-cat <<EOF > ai-output.json
-{
-  "source": {
-    "name": "ai-review",
-    "url": ""
-  },
-  "severity": "INFO",
-  "message": {
-    "text": "🤖 AI Code Review Summary\\n\\n$REVIEW_ESCAPED"
-  },
-  "location": {
-    "path": "README.md",
-    "range": {
-      "start": {
-        "line": 1,
-        "column": 1
-      },
-      "end": {
-        "line": 1,
-        "column": 1
-      }
-    }
-  }
-}
-EOF
-
-echo "📄 Generated reviewdog JSON format"
-
-# Hiển thị kết quả review
+# Display the review for logging
 echo "📝 AI Review Output:"
-echo "$REVIEW"
+if [[ -f ai-output.jsonl ]]; then
+  # Pretty print the JSON for logging
+  echo "$REVIEW_JSON" | jq '.' 2>/dev/null || echo "$REVIEW_JSON"
+else
+  echo "No review output generated"
+fi
 
 # Check if GitHub token is available for reviewdog
 if [[ -n "$GITHUB_TOKEN" ]]; then
@@ -123,40 +121,66 @@ if [[ -n "$GITHUB_TOKEN" ]]; then
     echo "📋 Repository: $GITHUB_REPOSITORY"
     echo "📝 Event: $(basename "$GITHUB_EVENT_PATH")"
 
-    # Use reviewdog with proper GitHub PR integration and debugging
-    echo "🔍 Checking ai-output.json content:"
-    cat ai-output.json
-    echo ""
-    echo "🚀 Running reviewdog..."
+    # Use reviewdog with the structured JSON response
+    echo "🔍 Checking AI review content:"
+    if [[ -f ai-output.jsonl ]]; then
+      cat ai-output.jsonl
+      echo ""
+      echo "🚀 Running reviewdog with structured AI response..."
 
-    # Try github-pr-review reporter first, fallback to github-pr-check
-    if ! cat ai-output.json | $HOME/bin/reviewdog \
-      -f=rdjson \
-      -name="ai-review" \
-      -reporter=github-pr-review \
-      -filter-mode=nofilter \
-      -fail-on-error=false \
-      -level=info; then
+      # Convert JSON array to line-delimited JSON for reviewdog
+      if echo "$REVIEW_JSON" | jq -c '.[]' > ai-output-lines.jsonl 2>/dev/null; then
+        echo "✅ Converted to JSONL format"
+        INPUT_FILE="ai-output-lines.jsonl"
+      else
+        echo "⚠️ Using single-line format"
+        INPUT_FILE="ai-output.jsonl"
+      fi
 
-      echo "⚠️ github-pr-review failed, trying github-pr-check reporter..."
-      cat ai-output.json | $HOME/bin/reviewdog \
+      # Try github-pr-review reporter with structured input
+      if ! cat "$INPUT_FILE" | $HOME/bin/reviewdog \
         -f=rdjson \
         -name="ai-review" \
-        -reporter=github-pr-check \
+        -reporter=github-pr-review \
         -filter-mode=nofilter \
-        -fail-on-error=false
+        -fail-on-error=false \
+        -level=info; then
+
+        echo "⚠️ github-pr-review failed, trying github-pr-check reporter..."
+        cat "$INPUT_FILE" | $HOME/bin/reviewdog \
+          -f=rdjson \
+          -name="ai-review" \
+          -reporter=github-pr-check \
+          -filter-mode=nofilter \
+          -fail-on-error=false
+      fi
+    else
+      echo "❌ No review output file found"
     fi
   else
     # Local testing - use local reporter to avoid API issues
     echo "⚠️ Local testing detected, using local reporter"
-    cat ai-output.json | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local
+    if [[ -f ai-output.jsonl ]]; then
+      if echo "$REVIEW_JSON" | jq -c '.[]' > ai-output-lines.jsonl 2>/dev/null; then
+        cat ai-output-lines.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local
+      else
+        cat ai-output.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local
+      fi
+    fi
   fi
 else
   echo "ℹ️ No GITHUB_TOKEN available, using local output"
-  echo "📄 Review JSON output saved to ai-output.json"
+  echo "📄 Review JSON output saved to ai-output.jsonl"
   # Show the review locally
-  if [[ -f ai-output.json ]]; then
+  if [[ -f ai-output.jsonl ]]; then
     echo "🔍 AI Review Summary:"
-    cat ai-output.json | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local 2>/dev/null || echo "Review saved to ai-output.json"
+    if echo "$REVIEW_JSON" | jq -c '.[]' > ai-output-lines.jsonl 2>/dev/null; then
+      cat ai-output-lines.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local 2>/dev/null || echo "Review saved to files"
+    else
+      cat ai-output.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local 2>/dev/null || echo "Review saved to files"
+    fi
   fi
 fi
+
+# Cleanup temporary files
+rm -f ai-output-lines.jsonl 2>/dev/null
