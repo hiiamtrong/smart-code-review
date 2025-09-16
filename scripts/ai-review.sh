@@ -64,40 +64,44 @@ fi
 
 echo "🤖 Sending to AI for review..."
 
-# Escape the diff content for JSON
-DIFF_ESCAPED=$(echo "$DIFF" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '\r' | sed 's/\r/\\n/g')
+# Properly escape the diff content for JSON
+echo "🔧 Escaping diff content for JSON..."
+DIFF_ESCAPED=$(echo "$DIFF" | jq -Rs . | sed 's/^"//; s/"$//')
 
 # Request OpenAI to return reviewdog-compatible JSON format
-SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback as a JSON array where each item follows this exact format:
+SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback as a JSON array where each item follows this exact format: {\"source\": {\"name\": \"ai-review\", \"url\": \"\"}, \"severity\": \"INFO\"|\"WARNING\"|\"ERROR\", \"message\": {\"text\": \"Your specific feedback here\"}, \"location\": {\"path\": \"filename.ext\", \"range\": {\"start\": {\"line\": NUMBER, \"column\": 1}, \"end\": {\"line\": NUMBER, \"column\": 1}}}}. Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions. Extract actual filenames and line numbers from the diff. Return ONLY the JSON array, no other text."
 
-{
-  \"source\": {\"name\": \"ai-review\", \"url\": \"\"},
-  \"severity\": \"INFO\" | \"WARNING\" | \"ERROR\",
-  \"message\": {\"text\": \"Your specific feedback here\"},
-  \"location\": {
-    \"path\": \"filename.ext\",
-    \"range\": {
-      \"start\": {\"line\": NUMBER, \"column\": 1},
-      \"end\": {\"line\": NUMBER, \"column\": 1}
-    }
-  }
-}
-
-Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions. Extract actual filenames and line numbers from the diff. Return ONLY the JSON array, no other text."
+# Escape the system prompt for JSON
+SYSTEM_PROMPT_ESCAPED=$(echo "$SYSTEM_PROMPT" | jq -Rs . | sed 's/^"//; s/"$//')
 
 # Make the API call with better error handling
 echo "📡 Making API request to OpenAI..."
 
+# Create the JSON payload using jq for proper escaping
+JSON_PAYLOAD=$(jq -n \
+  --arg model "gpt-4o-mini" \
+  --arg system_content "$SYSTEM_PROMPT" \
+  --arg user_content "$DIFF" \
+  '{
+    "model": $model,
+    "messages": [
+      {"role": "system", "content": $system_content},
+      {"role": "user", "content": $user_content}
+    ]
+  }')
+
+# Validate the JSON payload
+if ! echo "$JSON_PAYLOAD" | jq empty 2>/dev/null; then
+  echo "❌ Generated invalid JSON payload"
+  exit 1
+fi
+
+echo "✅ JSON payload validated"
+
 API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" https://api.openai.com/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"model\": \"gpt-4o-mini\",
-    \"messages\": [
-      {\"role\": \"system\", \"content\": \"$SYSTEM_PROMPT\"},
-      {\"role\": \"user\", \"content\": \"$DIFF_ESCAPED\"}
-    ]
-  }")
+  -d "$JSON_PAYLOAD")
 
 # Split response and status
 HTTP_STATUS=$(echo "$API_RESPONSE" | tail -n1 | sed 's/HTTP_STATUS://')
