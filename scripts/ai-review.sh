@@ -64,8 +64,8 @@ fi
 
 echo "🤖 Sending to AI for review..."
 
-# Request OpenAI to return reviewdog-compatible JSON format
-SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback as a JSON array. Each item must follow this exact format: {\"source\": {\"name\": \"ai-review\", \"url\": \"\"}, \"severity\": \"INFO\"|\"WARNING\"|\"ERROR\", \"message\": {\"text\": \"Your specific feedback here\"}, \"location\": {\"path\": \"filename.ext\", \"range\": {\"start\": {\"line\": NUMBER, \"column\": 1}, \"end\": {\"line\": NUMBER, \"column\": 1}}}}. Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions. Extract actual filenames and line numbers from the diff. CRITICAL: Return ONLY the raw JSON array with no markdown formatting, no explanations, no code blocks, no other text."
+# Request OpenAI to return reviewdog-compatible diagnostic format
+SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback in reviewdog diagnostic format. Return a JSON object with this exact structure: {\"source\": {\"name\": \"ai-review\", \"url\": \"\"}, \"severity\": \"ERROR\", \"diagnostics\": [{\"message\": \"Issue description\", \"location\": {\"path\": \"filename.ext\", \"range\": {\"start\": {\"line\": NUMBER, \"column\": NUMBER}, \"end\": {\"line\": NUMBER, \"column\": NUMBER}}}, \"severity\": \"ERROR\"|\"WARNING\"|\"INFO\", \"code\": {\"value\": \"issue-code\", \"url\": \"\"}}]}. Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions. Extract actual filenames and line numbers from the diff. Group all issues in the diagnostics array. CRITICAL: Return ONLY the raw JSON object with no markdown formatting, no explanations, no code blocks, no other text."
 
 # Make the API call with better error handling
 echo "📡 Making API request to OpenAI..."
@@ -143,17 +143,50 @@ fi
 
 if echo "$REVIEW_JSON" | jq empty 2>/dev/null; then
   echo "✅ Valid JSON format received"
-  # Convert JSON array to line-delimited JSON for reviewdog
-  echo "$REVIEW_JSON" | jq -c '.[]' > ai-output.jsonl
+
+  # Validate the diagnostic format structure
+  if echo "$REVIEW_JSON" | jq -e '.source and .diagnostics' >/dev/null 2>&1; then
+    echo "✅ Proper diagnostic format detected"
+    # Save the diagnostic object directly (no conversion needed)
+    echo "$REVIEW_JSON" > ai-output.jsonl
+  else
+    echo "⚠️ Converting array format to diagnostic format..."
+    # Convert old array format to new diagnostic format if needed
+    CONVERTED_JSON=$(echo "$REVIEW_JSON" | jq '{
+      "source": {"name": "ai-review", "url": ""},
+      "severity": "ERROR",
+      "diagnostics": [.[] | {
+        "message": .message.text,
+        "location": .location,
+        "severity": .severity,
+        "code": {"value": "ai-review", "url": ""}
+      }]
+    }')
+    echo "$CONVERTED_JSON" > ai-output.jsonl
+  fi
 else
   echo "⚠️ Invalid JSON format, creating fallback format..."
   echo "📄 Raw AI response (first 200 chars):"
   echo "$REVIEW_JSON" | head -c 200
   echo ""
 
-  # Fallback: create a single general comment
+  # Fallback: create a single diagnostic object
   REVIEW_ESCAPED=$(echo "$REVIEW_JSON" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '\r' | sed 's/\r/\\n/g')
-  echo "{\"source\":{\"name\":\"ai-review\",\"url\":\"\"},\"severity\":\"INFO\",\"message\":{\"text\":\"🤖 AI Code Review:\\n\\n$REVIEW_ESCAPED\"},\"location\":{\"path\":\"README.md\",\"range\":{\"start\":{\"line\":1,\"column\":1},\"end\":{\"line\":1,\"column\":1}}}}" > ai-output.jsonl
+  cat > ai-output.jsonl << EOF
+{
+  "source": {"name": "ai-review", "url": ""},
+  "severity": "INFO",
+  "diagnostics": [{
+    "message": "🤖 AI Code Review: $REVIEW_ESCAPED",
+    "location": {
+      "path": "README.md",
+      "range": {"start": {"line": 1, "column": 1}, "end": {"line": 1, "column": 1}}
+    },
+    "severity": "INFO",
+    "code": {"value": "ai-review", "url": ""}
+  }]
+}
+EOF
 fi
 
 # Display the review for logging
@@ -184,11 +217,11 @@ if [[ -n "$GITHUB_TOKEN" ]]; then
       echo ""
       echo "🚀 Running reviewdog with structured AI response..."
 
-      # Use the already converted JSONL file
+      # Use the diagnostic format file
       INPUT_FILE="ai-output.jsonl"
-      echo "✅ Using line-delimited JSON format"
+      echo "✅ Using reviewdog diagnostic format"
 
-      # Try github-pr-review reporter with structured input
+      # Try github-pr-review reporter with diagnostic input
       if ! cat "$INPUT_FILE" | $HOME/bin/reviewdog \
         -f=rdjson \
         -name="ai-review" \
