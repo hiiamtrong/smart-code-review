@@ -32,7 +32,9 @@ else
   fi
 fi
 
-echo "📊 Diff size: $(echo "$DIFF" | wc -l) lines"
+DIFF_LINES=$(echo "$DIFF" | wc -l)
+DIFF_CHARS=$(echo "$DIFF" | wc -c)
+echo "📊 Diff size: $DIFF_LINES lines, $DIFF_CHARS characters"
 
 # Check if we have diff content to review
 if [[ -z "$DIFF" || "$DIFF" == "No changes detected" ]]; then
@@ -40,10 +42,24 @@ if [[ -z "$DIFF" || "$DIFF" == "No changes detected" ]]; then
   exit 0
 fi
 
+# Check if diff is too large for API (OpenAI has token limits)
+if [[ $DIFF_CHARS -gt 50000 ]]; then
+  echo "⚠️ Diff is very large ($DIFF_CHARS chars), truncating for API..."
+  DIFF=$(echo "$DIFF" | head -c 40000)
+  echo "📊 Truncated to: $(echo "$DIFF" | wc -c) characters"
+fi
+
 # Check if OpenAI API key is set
 if [[ -z "$OPENAI_API_KEY" ]]; then
   echo "⚠️ OPENAI_API_KEY not set, skipping AI review"
   exit 0
+fi
+
+# Basic API key validation
+if [[ ! "$OPENAI_API_KEY" =~ ^sk-[a-zA-Z0-9] ]]; then
+  echo "⚠️ OPENAI_API_KEY doesn't appear to be valid (should start with 'sk-')"
+  echo "🔍 API Key format: ${OPENAI_API_KEY:0:10}..."
+  # Continue anyway in case the format changed
 fi
 
 echo "🤖 Sending to AI for review..."
@@ -69,7 +85,10 @@ SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your fee
 
 Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions. Extract actual filenames and line numbers from the diff. Return ONLY the JSON array, no other text."
 
-REVIEW_JSON=$(curl -s https://api.openai.com/v1/chat/completions \
+# Make the API call with better error handling
+echo "📡 Making API request to OpenAI..."
+
+API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" https://api.openai.com/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{
@@ -78,11 +97,33 @@ REVIEW_JSON=$(curl -s https://api.openai.com/v1/chat/completions \
       {\"role\": \"system\", \"content\": \"$SYSTEM_PROMPT\"},
       {\"role\": \"user\", \"content\": \"$DIFF_ESCAPED\"}
     ]
-  }" 2>/dev/null | jq -r '.choices[0].message.content' 2>/dev/null)
+  }")
+
+# Split response and status
+HTTP_STATUS=$(echo "$API_RESPONSE" | tail -n1 | sed 's/HTTP_STATUS://')
+API_BODY=$(echo "$API_RESPONSE" | sed '$d')
+
+echo "🔍 API Status: $HTTP_STATUS"
+
+# Check HTTP status
+if [[ "$HTTP_STATUS" != "200" ]]; then
+  echo "❌ OpenAI API request failed with status $HTTP_STATUS"
+  echo "📄 Response body:"
+  echo "$API_BODY" | head -10
+  exit 1
+fi
+
+# Extract the content from the response
+REVIEW_JSON=$(echo "$API_BODY" | jq -r '.choices[0].message.content' 2>/dev/null)
 
 # Check if API call was successful
 if [[ -z "$REVIEW_JSON" || "$REVIEW_JSON" == "null" ]]; then
-  echo "❌ Failed to get AI review response"
+  echo "❌ Failed to extract AI review content"
+  echo "📄 Raw API response (first 500 chars):"
+  echo "$API_BODY" | head -c 500
+  echo ""
+  echo "🔧 Parsed content:"
+  echo "$API_BODY" | jq '.choices[0].message.content' 2>/dev/null || echo "Failed to parse JSON"
   exit 1
 fi
 
