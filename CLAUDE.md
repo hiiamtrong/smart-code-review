@@ -47,8 +47,10 @@ bash -n scripts/ai-review.sh
 
 ## Required Environment Variables
 
-- `GITHUB_TOKEN`: Required for reviewdog PR comments
+- `GITHUB_TOKEN`: Required for reviewdog PR comments (automatically provided in GitHub Actions)
 - `OPENAI_API_KEY`: Required for AI-powered code review functionality
+
+**Important**: The script automatically sets `REVIEWDOG_GITHUB_API_TOKEN=$GITHUB_TOKEN` for reviewdog integration.
 
 ## Dependencies
 

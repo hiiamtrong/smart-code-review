@@ -71,16 +71,31 @@ fi
 
 echo "✅ AI review completed"
 
-# Convert output thành rdjson tối thiểu (ở đây mình giả lập 1 lỗi)
+# Convert output to proper rdjson format
+# Escape the review content for JSON
+REVIEW_ESCAPED=$(echo "$REVIEW" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '\r' | sed 's/\r/\\n/g')
+
 cat <<EOF > ai-output.json
 {
-  "source": "ai-review",
+  "source": {
+    "name": "ai-review",
+    "url": ""
+  },
   "severity": "INFO",
-  "message": "$REVIEW",
+  "message": {
+    "text": "$REVIEW_ESCAPED"
+  },
   "location": {
-    "path": "GLOBAL",
+    "path": ".",
     "range": {
-      "start": { "line": 1 }
+      "start": {
+        "line": 1,
+        "column": 1
+      },
+      "end": {
+        "line": 1,
+        "column": 1
+      }
     }
   }
 }
@@ -95,7 +110,7 @@ if [[ -n "$GITHUB_TOKEN" ]]; then
   echo "🚀 Posting review via reviewdog..."
   # Set the reviewdog environment variable and post to GitHub
   export REVIEWDOG_GITHUB_API_TOKEN="$GITHUB_TOKEN"
-  cat ai-output.json | reviewdog -f=rdjson -name="ai-review" -reporter=github-pr-review
+  cat ai-output.json | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=github-pr-review
 else
   echo "ℹ️ No GITHUB_TOKEN available, skipping reviewdog posting"
   echo "📄 Review JSON output saved to ai-output.json"
