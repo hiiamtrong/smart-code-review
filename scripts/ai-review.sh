@@ -151,18 +151,37 @@ if echo "$REVIEW_JSON" | jq empty 2>/dev/null; then
     echo "$REVIEW_JSON" > ai-output.jsonl
   else
     echo "⚠️ Converting array format to diagnostic format..."
+    echo "🔍 Examining structure..."
+    echo "$REVIEW_JSON" | jq '.[0] | keys' 2>/dev/null || echo "Not an array format"
+
     # Convert old array format to new diagnostic format if needed
-    CONVERTED_JSON=$(echo "$REVIEW_JSON" | jq '{
-      "source": {"name": "ai-review", "url": ""},
-      "severity": "ERROR",
-      "diagnostics": [.[] | {
-        "message": .message.text,
-        "location": .location,
-        "severity": .severity,
-        "code": {"value": "ai-review", "url": ""}
-      }]
-    }')
-    echo "$CONVERTED_JSON" > ai-output.jsonl
+    if echo "$REVIEW_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
+      echo "✅ Converting from array format"
+      CONVERTED_JSON=$(echo "$REVIEW_JSON" | jq '{
+        "source": {"name": "ai-review", "url": ""},
+        "severity": "ERROR",
+        "diagnostics": [.[] | {
+          "message": (if .message | type == "object" then .message.text else .message end),
+          "location": .location,
+          "severity": .severity,
+          "code": {"value": "ai-review", "url": ""}
+        }]
+      }')
+      echo "$CONVERTED_JSON" > ai-output.jsonl
+    else
+      echo "🔄 Treating as single object, wrapping in diagnostic format"
+      CONVERTED_JSON=$(echo "$REVIEW_JSON" | jq '{
+        "source": {"name": "ai-review", "url": ""},
+        "severity": .severity // "INFO",
+        "diagnostics": [{
+          "message": (if .message | type == "object" then .message.text else (.message // "AI Review")),
+          "location": (.location // {"path": "README.md", "range": {"start": {"line": 1, "column": 1}, "end": {"line": 1, "column": 1}}}),
+          "severity": (.severity // "INFO"),
+          "code": {"value": "ai-review", "url": ""}
+        }]
+      }')
+      echo "$CONVERTED_JSON" > ai-output.jsonl
+    fi
   fi
 else
   echo "⚠️ Invalid JSON format, creating fallback format..."
