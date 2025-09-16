@@ -64,15 +64,8 @@ fi
 
 echo "🤖 Sending to AI for review..."
 
-# Properly escape the diff content for JSON
-echo "🔧 Escaping diff content for JSON..."
-DIFF_ESCAPED=$(echo "$DIFF" | jq -Rs . | sed 's/^"//; s/"$//')
-
 # Request OpenAI to return reviewdog-compatible JSON format
-SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback as a JSON array where each item follows this exact format: {\"source\": {\"name\": \"ai-review\", \"url\": \"\"}, \"severity\": \"INFO\"|\"WARNING\"|\"ERROR\", \"message\": {\"text\": \"Your specific feedback here\"}, \"location\": {\"path\": \"filename.ext\", \"range\": {\"start\": {\"line\": NUMBER, \"column\": 1}, \"end\": {\"line\": NUMBER, \"column\": 1}}}}. Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions. Extract actual filenames and line numbers from the diff. Return ONLY the JSON array, no other text."
-
-# Escape the system prompt for JSON
-SYSTEM_PROMPT_ESCAPED=$(echo "$SYSTEM_PROMPT" | jq -Rs . | sed 's/^"//; s/"$//')
+SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback as a JSON array. Each item must follow this exact format: {\"source\": {\"name\": \"ai-review\", \"url\": \"\"}, \"severity\": \"INFO\"|\"WARNING\"|\"ERROR\", \"message\": {\"text\": \"Your specific feedback here\"}, \"location\": {\"path\": \"filename.ext\", \"range\": {\"start\": {\"line\": NUMBER, \"column\": 1}, \"end\": {\"line\": NUMBER, \"column\": 1}}}}. Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions. Extract actual filenames and line numbers from the diff. CRITICAL: Return ONLY the raw JSON array with no markdown formatting, no explanations, no code blocks, no other text."
 
 # Make the API call with better error handling
 echo "📡 Making API request to OpenAI..."
@@ -135,11 +128,28 @@ echo "✅ AI review completed"
 
 # Validate and clean the JSON response
 echo "🔍 Validating AI response format..."
+
+# Try to extract JSON from markdown code blocks if present
+if [[ "$REVIEW_JSON" == *'```json'* ]]; then
+  echo "🔧 Extracting JSON from markdown code block..."
+  REVIEW_JSON=$(echo "$REVIEW_JSON" | sed -n '/```json/,/```/p' | sed '1d;$d')
+fi
+
+# Remove any non-JSON prefix/suffix
+if [[ "$REVIEW_JSON" == *'['* ]]; then
+  # Extract from first [ to last ]
+  REVIEW_JSON=$(echo "$REVIEW_JSON" | sed -n '/\[/,/\]/p' | tr -d '\n' | sed 's/.*\(\[.*\]\).*/\1/')
+fi
+
 if echo "$REVIEW_JSON" | jq empty 2>/dev/null; then
   echo "✅ Valid JSON format received"
   echo "$REVIEW_JSON" > ai-output.jsonl
 else
   echo "⚠️ Invalid JSON format, creating fallback format..."
+  echo "📄 Raw AI response (first 200 chars):"
+  echo "$REVIEW_JSON" | head -c 200
+  echo ""
+
   # Fallback: create a single general comment
   REVIEW_ESCAPED=$(echo "$REVIEW_JSON" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '\r' | sed 's/\r/\\n/g')
   echo "{\"source\":{\"name\":\"ai-review\",\"url\":\"\"},\"severity\":\"INFO\",\"message\":{\"text\":\"🤖 AI Code Review:\\n\\n$REVIEW_ESCAPED\"},\"location\":{\"path\":\"README.md\",\"range\":{\"start\":{\"line\":1,\"column\":1},\"end\":{\"line\":1,\"column\":1}}}}" > ai-output.jsonl
