@@ -62,3 +62,8 @@ def process_user_data(name,email,age):  # Missing spaces after commas
 
 # Missing main guard
 app.run(debug=True,host='0.0.0.0')  # Debug mode in production, security risk
+
+
+# Unused function
+def unused_function():
+    pass

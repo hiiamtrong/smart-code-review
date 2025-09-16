@@ -49,50 +49,74 @@ if [[ $DIFF_CHARS -gt 50000 ]]; then
   echo "📊 Truncated to: $(echo "$DIFF" | wc -c) characters"
 fi
 
-# Check if OpenAI API key is set
-if [[ -z "$OPENAI_API_KEY" ]]; then
-  echo "⚠️ OPENAI_API_KEY not set, skipping AI review"
+# Check if Gemini API key is set
+if [[ -z "$GEMINI_API_KEY" ]]; then
+  echo "⚠️ GEMINI_API_KEY not set, skipping AI review"
   exit 0
 fi
 
-# Basic API key validation
-if [[ ! "$OPENAI_API_KEY" =~ ^sk-[a-zA-Z0-9] ]]; then
-  echo "⚠️ OPENAI_API_KEY doesn't appear to be valid (should start with 'sk-')"
-  echo "🔍 API Key format: ${OPENAI_API_KEY:0:10}..."
+# Basic API key validation (Gemini keys usually start with AIza)
+if [[ ! "$GEMINI_API_KEY" =~ ^AIza[a-zA-Z0-9] ]]; then
+  echo "⚠️ GEMINI_API_KEY doesn't appear to be valid (should start with 'AIza')"
+  echo "🔍 API Key format: ${GEMINI_API_KEY:0:10}..."
   # Continue anyway in case the format changed
 fi
 
 echo "🤖 Sending to AI for review..."
-echo "🔍 Sample diff content (first 10 lines):"
-echo "$DIFF" | head -10
+echo "🔍 Formatted diff content (first 10 lines):"
+echo "\`\`\`diff"
+echo "$DIFF_FOR_AI" | head -10
+echo "\`\`\`"
 
-# Request OpenAI to return reviewdog-compatible diagnostic format
-SYSTEM_PROMPT="You are a code reviewer. Analyze the git diff and return your feedback in reviewdog diagnostic format.
+# Write diff to a temporary file for reference
+echo "$DIFF" > ai-diff.txt
 
-CRITICAL INSTRUCTIONS:
-1. Extract EXACT file paths from the diff (look for +++ b/filename patterns)
-2. Calculate EXACT line numbers by counting from diff context (look for @@ -old,count +new,count @@ patterns)
-3. For each issue, provide the precise line number where the problem occurs
+# Generate diff with line numbers for AI analysis
+echo "🔢 Generating diff with line numbers..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/showlinenum.awk" ]]; then
+  NUMBERED_DIFF=$(echo "$DIFF" | awk -f "$SCRIPT_DIR/showlinenum.awk")
+  echo "$NUMBERED_DIFF" > ai-diff-with-lines.txt
+  echo "✅ Diff with line numbers generated"
+  echo "🔍 First 20 lines of numbered diff:"
+  head -20 ai-diff-with-lines.txt
 
-Return a JSON object with this exact structure: {\"source\": {\"name\": \"ai-review\", \"url\": \"\"}, \"severity\": \"ERROR\", \"diagnostics\": [{\"message\": \"Issue description\", \"location\": {\"path\": \"exact_filename_from_diff\", \"range\": {\"start\": {\"line\": EXACT_LINE_NUMBER, \"column\": EXACT_COLUMN}, \"end\": {\"line\": EXACT_LINE_NUMBER, \"column\": EXACT_COLUMN}}}, \"severity\": \"ERROR\"|\"WARNING\"|\"INFO\", \"code\": {\"value\": \"issue-type\", \"url\": \"\"}}]}.
+  # Use numbered diff for AI analysis
+  DIFF_FOR_AI="$NUMBERED_DIFF"
+  echo "✅ Using numbered diff for AI analysis"
+else
+  echo "⚠️ showlinenum.awk not found at $SCRIPT_DIR/showlinenum.awk, using raw diff"
+  DIFF_FOR_AI="$DIFF"
+fi
 
-Focus on bugs, security issues, and code quality. Use severity: ERROR for bugs/security, WARNING for code quality, INFO for suggestions.
-
-CRITICAL: Return ONLY the raw JSON object with no markdown formatting, no explanations, no code blocks, no other text."
-
+# Request Gemini to return reviewdog-compatible diagnostic format
+SYSTEM_PROMPT=$(cat "$SCRIPT_DIR/SYSTEM_PROMPT.txt")
 # Make the API call with better error handling
-echo "📡 Making API request to OpenAI..."
+echo "📡 Making API request to Gemini (Google)..."
 
 # Create the JSON payload using jq for proper escaping
+# Format the numbered diff in a code block for AI parsing
+FORMATTED_PROMPT="$SYSTEM_PROMPT
+
+Here is the git diff to analyze:
+
+\`\`\`diff
+$DIFF_FOR_AI
+\`\`\`
+
+Please analyze this diff and return the reviewdog diagnostic JSON format as specified above."
+
 JSON_PAYLOAD=$(jq -n \
-  --arg model "gpt-4o-mini" \
-  --arg system_content "$SYSTEM_PROMPT" \
-  --arg user_content "$DIFF" \
+  --arg prompt_text "$FORMATTED_PROMPT" \
   '{
-    "model": $model,
-    "messages": [
-      {"role": "system", "content": $system_content},
-      {"role": "user", "content": $user_content}
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": $prompt_text
+          }
+        ]
+      }
     ]
   }')
 
@@ -103,10 +127,12 @@ if ! echo "$JSON_PAYLOAD" | jq empty 2>/dev/null; then
 fi
 
 echo "✅ JSON payload validated"
+echo $JSON_PAYLOAD | jq '.' 2>/dev/null 
 
-API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" https://api.openai.com/v1/chat/completions \
-  -H "Authorization: Bearer $OPENAI_API_KEY" \
+API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" \
   -H "Content-Type: application/json" \
+  -H "X-goog-api-key: $GEMINI_API_KEY" \
+  -X POST \
   -d "$JSON_PAYLOAD")
 
 # Split response and status
@@ -117,14 +143,14 @@ echo "🔍 API Status: $HTTP_STATUS"
 
 # Check HTTP status
 if [[ "$HTTP_STATUS" != "200" ]]; then
-  echo "❌ OpenAI API request failed with status $HTTP_STATUS"
+  echo "❌ Gemini API request failed with status $HTTP_STATUS"
   echo "📄 Response body:"
   echo "$API_BODY" | head -10
   exit 1
 fi
 
-# Extract the content from the response
-REVIEW_JSON=$(echo "$API_BODY" | jq -r '.choices[0].message.content' 2>/dev/null)
+# Extract the content from the response (Gemini format)
+REVIEW_JSON=$(echo "$API_BODY" | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null)
 
 # Check if API call was successful
 if [[ -z "$REVIEW_JSON" || "$REVIEW_JSON" == "null" ]]; then
@@ -133,7 +159,7 @@ if [[ -z "$REVIEW_JSON" || "$REVIEW_JSON" == "null" ]]; then
   echo "$API_BODY" | head -c 500
   echo ""
   echo "🔧 Parsed content:"
-  echo "$API_BODY" | jq '.choices[0].message.content' 2>/dev/null || echo "Failed to parse JSON"
+  echo "$API_BODY" | jq '.candidates[0].content.parts[0].text' 2>/dev/null || echo "Failed to parse JSON"
   exit 1
 fi
 
@@ -226,6 +252,26 @@ echo "📝 AI Review Output:"
 if [[ -f ai-output.jsonl ]]; then
   # Pretty print the JSON for logging
   echo "$REVIEW_JSON" | jq '.' 2>/dev/null || echo "$REVIEW_JSON"
+
+  # Line number verification if showlinenum output exists
+  if [[ -f ai-diff-with-lines.txt ]]; then
+    echo ""
+    echo "🔍 Line Number Verification:"
+    echo "Comparing AI reported line numbers with actual diff line numbers..."
+
+    # Extract line numbers from AI output and show corresponding lines from numbered diff
+    if echo "$REVIEW_JSON" | jq -e '.diagnostics' >/dev/null 2>&1; then
+      echo "$REVIEW_JSON" | jq -r '.diagnostics[] | "Line \(.location.range.start.line): \(.message)"' | while read -r line; do
+        echo "AI: $line"
+        line_num=$(echo "$line" | sed 's/Line \([0-9]*\):.*/\1/')
+        if [[ -n "$line_num" && "$line_num" -gt 0 ]]; then
+          echo "Diff context around line $line_num:"
+          grep -n "^$line_num:" ai-diff-with-lines.txt | head -3 || echo "  (line not found in numbered diff)"
+        fi
+        echo ""
+      done
+    fi
+  fi
 else
   echo "No review output generated"
 fi
