@@ -1,63 +1,74 @@
 #!/usr/bin/env bash
 set -e
 
-# Get diff since last push
-echo "🔍 Getting diff since last push..."
+# Get diff for review
+echo "🔍 Getting diff for review..."
 
-# Get the current branch (handle GitHub Actions detached HEAD)
-if [[ -n "$GITHUB_HEAD_REF" ]]; then
-  # Pull request - use the PR head branch
-  CURRENT_BRANCH="$GITHUB_HEAD_REF"
-elif [[ -n "$GITHUB_REF_NAME" ]]; then
-  # Direct push - use the ref name
-  CURRENT_BRANCH="$GITHUB_REF_NAME"
-else
-  # Local environment
-  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-fi
-echo "📌 Current branch: $CURRENT_BRANCH"
-
-# Try to get the remote tracking branch
-REMOTE_BRANCH=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
-
-if [[ -n "$REMOTE_BRANCH" ]]; then
-  # Compare with remote tracking branch (changes since last push)
-  echo "📊 Comparing with remote tracking: $REMOTE_BRANCH"
-  DIFF=$(git diff $REMOTE_BRANCH...HEAD)
-else
-  # Try origin/<current-branch> first (for GitHub Actions PR scenario)
-  if git rev-parse --verify origin/$CURRENT_BRANCH >/dev/null 2>&1; then
-    echo "📊 Comparing with origin/$CURRENT_BRANCH"
-    DIFF=$(git diff origin/$CURRENT_BRANCH...HEAD)
-  # Fallback: try origin/main or origin/master
-  elif git rev-parse --verify origin/main >/dev/null 2>&1; then
-    echo "📊 Comparing with origin/main"
-    DIFF=$(git diff origin/main...HEAD)
-  elif git rev-parse --verify origin/master >/dev/null 2>&1; then
-    echo "📊 Comparing with origin/master"
-    DIFF=$(git diff origin/master...HEAD)
-  elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-    # Local testing - diff against previous commit
-    echo "📊 Comparing with previous commit"
-    DIFF=$(git diff HEAD~1)
+# Determine comparison strategy based on environment
+if [[ -n "$GITHUB_BASE_REF" ]]; then
+  # Pull request - compare with base branch
+  BASE_BRANCH="$GITHUB_BASE_REF"
+  echo "📌 PR detected: comparing with base branch $BASE_BRANCH"
+  if git rev-parse --verify origin/$BASE_BRANCH >/dev/null 2>&1; then
+    echo "📊 Comparing with origin/$BASE_BRANCH"
+    DIFF=$(git diff origin/$BASE_BRANCH...HEAD)
   else
-    # Check for staged changes first
-    if git diff --cached --name-only | head -1 >/dev/null 2>&1; then
-      echo "📝 Found staged changes, reviewing..."
-      DIFF=$(git diff --cached)
-    elif git ls-files --others --exclude-standard | head -1 >/dev/null; then
-      # New repository - get all untracked files as diff
-      echo "📝 New repository detected, reviewing all untracked files..."
-      DIFF=""
-      for file in $(git ls-files --others --exclude-standard); do
-        if [[ -f "$file" ]]; then
-          echo "Adding $file to review..."
-          DIFF="${DIFF}\n--- /dev/null\n+++ $file\n$(cat "$file" | sed 's/^/+/')"
-        fi
-      done
+    echo "⚠️ Base branch origin/$BASE_BRANCH not found"
+    DIFF=$(git diff origin/main...HEAD 2>/dev/null || git diff origin/master...HEAD 2>/dev/null || echo "No changes detected")
+  fi
+else
+  # Not a PR - get the current branch and compare with remote
+  if [[ -n "$GITHUB_REF_NAME" ]]; then
+    # Direct push in GitHub Actions
+    CURRENT_BRANCH="$GITHUB_REF_NAME"
+  else
+    # Local environment
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  fi
+  echo "📌 Current branch: $CURRENT_BRANCH"
+
+  # Try to get the remote tracking branch
+  REMOTE_BRANCH=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+
+  if [[ -n "$REMOTE_BRANCH" ]]; then
+    # Compare with remote tracking branch (changes since last push)
+    echo "📊 Comparing with remote tracking: $REMOTE_BRANCH"
+    DIFF=$(git diff $REMOTE_BRANCH...HEAD)
+  else
+    # Try origin/<current-branch> first
+    if git rev-parse --verify origin/$CURRENT_BRANCH >/dev/null 2>&1; then
+      echo "📊 Comparing with origin/$CURRENT_BRANCH"
+      DIFF=$(git diff origin/$CURRENT_BRANCH...HEAD)
+    # Fallback: try origin/main or origin/master
+    elif git rev-parse --verify origin/main >/dev/null 2>&1; then
+      echo "📊 Comparing with origin/main"
+      DIFF=$(git diff origin/main...HEAD)
+    elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+      echo "📊 Comparing with origin/master"
+      DIFF=$(git diff origin/master...HEAD)
+    elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+      # Local testing - diff against previous commit
+      echo "📊 Comparing with previous commit"
+      DIFF=$(git diff HEAD~1)
     else
-      # Fallback - get working directory changes
-      DIFF=$(git diff HEAD 2>/dev/null || echo "No changes detected")
+      # Check for staged changes first
+      if git diff --cached --name-only | head -1 >/dev/null 2>&1; then
+        echo "📝 Found staged changes, reviewing..."
+        DIFF=$(git diff --cached)
+      elif git ls-files --others --exclude-standard | head -1 >/dev/null; then
+        # New repository - get all untracked files as diff
+        echo "📝 New repository detected, reviewing all untracked files..."
+        DIFF=""
+        for file in $(git ls-files --others --exclude-standard); do
+          if [[ -f "$file" ]]; then
+            echo "Adding $file to review..."
+            DIFF="${DIFF}\n--- /dev/null\n+++ $file\n$(cat "$file" | sed 's/^/+/')"
+          fi
+        done
+      else
+        # Fallback - get working directory changes
+        DIFF=$(git diff HEAD 2>/dev/null || echo "No changes detected")
+      fi
     fi
   fi
 fi
