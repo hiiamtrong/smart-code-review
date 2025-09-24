@@ -1,34 +1,52 @@
 #!/usr/bin/env bash
 set -e
 
-# Lấy diff của PR với fallback options
-echo "🔍 Getting diff for review..."
+# Get diff since last push
+echo "🔍 Getting diff since last push..."
 
-# Try different diff strategies
-if git rev-parse --verify origin/main >/dev/null 2>&1; then
-  # PR scenario - diff against origin/main
-  DIFF=$(git diff origin/main...HEAD)
-elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-  # Local testing - diff against previous commit
-  DIFF=$(git diff HEAD~1)
+# Get the current branch
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# Try to get the remote tracking branch
+REMOTE_BRANCH=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
+
+if [[ -n "$REMOTE_BRANCH" ]]; then
+  # Compare with remote tracking branch (changes since last push)
+  echo "📊 Comparing with remote: $REMOTE_BRANCH"
+  DIFF=$(git diff $REMOTE_BRANCH...HEAD)
 else
-  # Check for staged changes first
-  if git diff --cached --name-only | head -1 >/dev/null 2>&1; then
-    echo "📝 Found staged changes, reviewing..."
-    DIFF=$(git diff --cached)
-  elif git ls-files --others --exclude-standard | head -1 >/dev/null; then
-    # New repository - get all untracked files as diff
-    echo "📝 New repository detected, reviewing all untracked files..."
-    DIFF=""
-    for file in $(git ls-files --others --exclude-standard); do
-      if [[ -f "$file" ]]; then
-        echo "Adding $file to review..."
-        DIFF="${DIFF}\n--- /dev/null\n+++ $file\n$(cat "$file" | sed 's/^/+/')"
-      fi
-    done
+  echo "⚠️ No remote tracking branch found, using fallback strategies..."
+
+  # Fallback: try origin/main or origin/master
+  if git rev-parse --verify origin/main >/dev/null 2>&1; then
+    echo "📊 Comparing with origin/main"
+    DIFF=$(git diff origin/main...HEAD)
+  elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+    echo "📊 Comparing with origin/master"
+    DIFF=$(git diff origin/master...HEAD)
+  elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+    # Local testing - diff against previous commit
+    echo "📊 Comparing with previous commit"
+    DIFF=$(git diff HEAD~1)
   else
-    # Fallback - get working directory changes
-    DIFF=$(git diff HEAD 2>/dev/null || echo "No changes detected")
+    # Check for staged changes first
+    if git diff --cached --name-only | head -1 >/dev/null 2>&1; then
+      echo "📝 Found staged changes, reviewing..."
+      DIFF=$(git diff --cached)
+    elif git ls-files --others --exclude-standard | head -1 >/dev/null; then
+      # New repository - get all untracked files as diff
+      echo "📝 New repository detected, reviewing all untracked files..."
+      DIFF=""
+      for file in $(git ls-files --others --exclude-standard); do
+        if [[ -f "$file" ]]; then
+          echo "Adding $file to review..."
+          DIFF="${DIFF}\n--- /dev/null\n+++ $file\n$(cat "$file" | sed 's/^/+/')"
+        fi
+      done
+    else
+      # Fallback - get working directory changes
+      DIFF=$(git diff HEAD 2>/dev/null || echo "No changes detected")
+    fi
   fi
 fi
 

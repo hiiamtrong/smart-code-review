@@ -9,7 +9,11 @@ export PATH="$HOME/bin:$PATH"
 echo "🔎 Detecting project language..."
 
 if [ -f "package.json" ]; then
-  LANG="node"
+  if grep -q '"typescript"' package.json; then
+    LANG="typescript"
+  else
+    LANG="javascript"
+  fi
 elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then
   LANG="python"
 elif [ -f "pom.xml" ] || [ -f "build.gradle" ]; then
