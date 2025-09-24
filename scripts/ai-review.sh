@@ -6,19 +6,22 @@ echo "🔍 Getting diff since last push..."
 
 # Get the current branch
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "📌 Current branch: $CURRENT_BRANCH"
 
 # Try to get the remote tracking branch
 REMOTE_BRANCH=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
 
 if [[ -n "$REMOTE_BRANCH" ]]; then
   # Compare with remote tracking branch (changes since last push)
-  echo "📊 Comparing with remote: $REMOTE_BRANCH"
+  echo "📊 Comparing with remote tracking: $REMOTE_BRANCH"
   DIFF=$(git diff $REMOTE_BRANCH...HEAD)
 else
-  echo "⚠️ No remote tracking branch found, using fallback strategies..."
-
+  # Try origin/<current-branch> first (for GitHub Actions PR scenario)
+  if git rev-parse --verify origin/$CURRENT_BRANCH >/dev/null 2>&1; then
+    echo "📊 Comparing with origin/$CURRENT_BRANCH"
+    DIFF=$(git diff origin/$CURRENT_BRANCH...HEAD)
   # Fallback: try origin/main or origin/master
-  if git rev-parse --verify origin/main >/dev/null 2>&1; then
+  elif git rev-parse --verify origin/main >/dev/null 2>&1; then
     echo "📊 Comparing with origin/main"
     DIFF=$(git diff origin/main...HEAD)
   elif git rev-parse --verify origin/master >/dev/null 2>&1; then
