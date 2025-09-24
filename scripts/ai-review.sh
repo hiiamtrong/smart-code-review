@@ -4,8 +4,17 @@ set -e
 # Get diff since last push
 echo "🔍 Getting diff since last push..."
 
-# Get the current branch
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+# Get the current branch (handle GitHub Actions detached HEAD)
+if [[ -n "$GITHUB_HEAD_REF" ]]; then
+  # Pull request - use the PR head branch
+  CURRENT_BRANCH="$GITHUB_HEAD_REF"
+elif [[ -n "$GITHUB_REF_NAME" ]]; then
+  # Direct push - use the ref name
+  CURRENT_BRANCH="$GITHUB_REF_NAME"
+else
+  # Local environment
+  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+fi
 echo "📌 Current branch: $CURRENT_BRANCH"
 
 # Try to get the remote tracking branch
