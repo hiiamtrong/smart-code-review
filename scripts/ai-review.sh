@@ -49,24 +49,15 @@ if [[ $DIFF_CHARS -gt 50000 ]]; then
   echo "📊 Truncated to: $(echo "$DIFF" | wc -c) characters"
 fi
 
-# Check if Gemini API key is set
-if [[ -z "$GEMINI_API_KEY" ]]; then
-  echo "⚠️ GEMINI_API_KEY not set, skipping AI review"
+# Check if gateway URL is set
+if [[ -z "$AI_GATEWAY_URL" ]]; then
+  echo "⚠️ AI_GATEWAY_URL not set, skipping AI review"
   exit 0
 fi
 
-# Basic API key validation (Gemini keys usually start with AIza)
-if [[ ! "$GEMINI_API_KEY" =~ ^AIza[a-zA-Z0-9] ]]; then
-  echo "⚠️ GEMINI_API_KEY doesn't appear to be valid (should start with 'AIza')"
-  echo "🔍 API Key format: ${GEMINI_API_KEY:0:10}..."
-  # Continue anyway in case the format changed
-fi
+echo "ℹ️ Using AI Gateway at $AI_GATEWAY_URL"
 
 echo "🤖 Sending to AI for review..."
-echo "🔍 Formatted diff content (first 10 lines):"
-echo "\`\`\`diff"
-echo "$DIFF_FOR_AI" | head -10
-echo "\`\`\`"
 
 # Write diff to a temporary file for reference
 echo "$DIFF" > ai-diff.txt
@@ -89,35 +80,36 @@ else
   DIFF_FOR_AI="$DIFF"
 fi
 
-# Request Gemini to return reviewdog-compatible diagnostic format
-SYSTEM_PROMPT=$(cat "$SCRIPT_DIR/SYSTEM_PROMPT.txt")
-# Make the API call with better error handling
-echo "📡 Making API request to Gemini (Google)..."
+# Detect language from git diff
+LANGUAGE="unknown"
+if echo "$DIFF" | grep -q "\.ts\|\.tsx"; then
+  LANGUAGE="typescript"
+elif echo "$DIFF" | grep -q "\.js\|\.jsx"; then
+  LANGUAGE="javascript"
+elif echo "$DIFF" | grep -q "\.py"; then
+  LANGUAGE="python"
+elif echo "$DIFF" | grep -q "\.java"; then
+  LANGUAGE="java"
+elif echo "$DIFF" | grep -q "\.go"; then
+  LANGUAGE="go"
+fi
 
-# Create the JSON payload using jq for proper escaping
-# Format the numbered diff in a code block for AI parsing
-FORMATTED_PROMPT="$SYSTEM_PROMPT
+echo "📝 Detected language: $LANGUAGE"
 
-Here is the git diff to analyze:
-
-\`\`\`diff
-$DIFF_FOR_AI
-\`\`\`
-
-Please analyze this diff and return the reviewdog diagnostic JSON format as specified above."
+# Use gateway API
+echo "📡 Making API request via gateway..."
 
 JSON_PAYLOAD=$(jq -n \
-  --arg prompt_text "$FORMATTED_PROMPT" \
+  --arg git_diff "$DIFF_FOR_AI" \
+  --arg language "$LANGUAGE" \
+  --arg ai_model "${AI_MODEL:-gemini-2.0-flash}" \
+  --arg ai_provider "${AI_PROVIDER:-gemini}" \
   '{
-    "contents": [
-      {
-        "parts": [
-          {
-            "text": $prompt_text
-          }
-        ]
-      }
-    ]
+    "ai_model": $ai_model,
+    "ai_provider": $ai_provider,
+    "git_diff": $git_diff,
+    "language": $language,
+    "review_mode": "string"
   }')
 
 # Validate the JSON payload
@@ -126,12 +118,9 @@ if ! echo "$JSON_PAYLOAD" | jq empty 2>/dev/null; then
   exit 1
 fi
 
-echo "✅ JSON payload validated"
-echo $JSON_PAYLOAD | jq '.' 2>/dev/null 
-
-API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" \
+API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$AI_GATEWAY_URL" \
   -H "Content-Type: application/json" \
-  -H "X-goog-api-key: $GEMINI_API_KEY" \
+  -H "X-API-Key: $AI_GATEWAY_API_KEY" \
   -X POST \
   -d "$JSON_PAYLOAD")
 
@@ -143,14 +132,14 @@ echo "🔍 API Status: $HTTP_STATUS"
 
 # Check HTTP status
 if [[ "$HTTP_STATUS" != "200" ]]; then
-  echo "❌ Gemini API request failed with status $HTTP_STATUS"
+  echo "❌ API request failed with status $HTTP_STATUS"
   echo "📄 Response body:"
   echo "$API_BODY" | head -10
   exit 1
 fi
 
-# Extract the content from the response (Gemini format)
-REVIEW_JSON=$(echo "$API_BODY" | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null)
+# Extract the content from the response (Gateway returns diagnostic format directly)
+REVIEW_JSON=$(echo "$API_BODY" | jq -c '.' 2>/dev/null)
 
 # Check if API call was successful
 if [[ -z "$REVIEW_JSON" || "$REVIEW_JSON" == "null" ]]; then
