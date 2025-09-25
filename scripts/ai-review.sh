@@ -132,7 +132,7 @@ JSON_PAYLOAD=$(jq -n \
   --arg git_diff "$DIFF_FOR_AI" \
   --arg language "$LANGUAGE" \
   --arg ai_model "${AI_MODEL:-gemini-2.0-flash}" \
-  --arg ai_provider "${AI_PROVIDER:-gemini}" \
+  --arg ai_provider "${AI_PROVIDER:-google}" \
   '{
     "ai_model": $ai_model,
     "ai_provider": $ai_provider,

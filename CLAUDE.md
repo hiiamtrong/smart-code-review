@@ -53,7 +53,7 @@ bash -n scripts/ai-review.sh
 - `AI_GATEWAY_URL`: Required for AI Gateway service endpoint
 - `AI_GATEWAY_API_KEY`: Required for AI Gateway authentication
 - `AI_MODEL`: Optional AI model selection (default: gemini-2.0-flash)
-- `AI_PROVIDER`: Optional AI provider selection (default: gemini)
+- `AI_PROVIDER`: Optional AI provider selection (default: google)
 
 **Important**: The script automatically sets `REVIEWDOG_GITHUB_API_TOKEN=$GITHUB_TOKEN` for reviewdog integration.
 

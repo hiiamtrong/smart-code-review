@@ -15,13 +15,13 @@ This GitHub Action automatically detects your project's language/framework and c
 
 ## 📚 Supported Languages & Tools
 
-| Language | Linters | AI Review |
-|----------|---------|-----------|
-| **Node.js/TypeScript** | ESLint | ✅ |
-| **Python** | ruff → flake8 → pylint | ✅ |
-| **Java** | Checkstyle (Maven/Gradle) | ✅ |
-| **Go** | staticcheck → golangci-lint | ✅ |
-| **.NET** | dotnet format | ✅ |
+| Language               | Linters                     | AI Review |
+| ---------------------- | --------------------------- | --------- |
+| **Node.js/TypeScript** | ESLint                      | ✅         |
+| **Python**             | ruff → flake8 → pylint      | ✅         |
+| **Java**               | Checkstyle (Maven/Gradle)   | ✅         |
+| **Go**                 | staticcheck → golangci-lint | ✅         |
+| **.NET**               | dotnet format               | ✅         |
 
 ## 🚀 Quick Start
 
@@ -72,18 +72,18 @@ jobs:
 
 ### Required Inputs
 
-| Input | Description | Example |
-|-------|-------------|---------|
-| `github_token` | GitHub token for PR comments | `${{ secrets.GITHUB_TOKEN }}` |
-| `ai_gateway_url` | AI Gateway service endpoint | `https://gateway.example.com/api/review` |
-| `ai_gateway_api_key` | API key for AI Gateway | `${{ secrets.AI_GATEWAY_API_KEY }}` |
+| Input                | Description                  | Example                                  |
+| -------------------- | ---------------------------- | ---------------------------------------- |
+| `github_token`       | GitHub token for PR comments | `${{ secrets.GITHUB_TOKEN }}`            |
+| `ai_gateway_url`     | AI Gateway service endpoint  | `https://gateway.example.com/api/review` |
+| `ai_gateway_api_key` | API key for AI Gateway       | `${{ secrets.AI_GATEWAY_API_KEY }}`      |
 
 ### Optional Inputs
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `ai_model` | AI model to use | `gemini-2.0-flash` |
-| `ai_provider` | AI provider | `gemini` |
+| Input         | Description     | Default            |
+| ------------- | --------------- | ------------------ |
+| `ai_model`    | AI model to use | `gemini-2.0-flash` |
+| `ai_provider` | AI provider     | `google`           |
 
 ### Required Repository Settings
 
@@ -151,7 +151,7 @@ This action expects your AI Gateway to:
 ```json
 {
   "ai_model": "gemini-2.0-flash",
-  "ai_provider": "gemini",
+  "ai_provider": "google",
   "git_diff": "diff content...",
   "language": "javascript",
   "review_mode": "string"
