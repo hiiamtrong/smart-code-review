@@ -198,74 +198,35 @@ echo "✅ AI review completed"
 # Validate and clean the JSON response
 echo "🔍 Validating AI response format..."
 
-# Try to extract JSON from markdown code blocks if present
-if [[ "$REVIEW_JSON" == *'```json'* ]]; then
-  echo "🔧 Extracting JSON from markdown code block..."
-  REVIEW_JSON=$(echo "$REVIEW_JSON" | sed -n '/```json/,/```/p' | sed '1d;$d')
-fi
-
-# Remove any non-JSON prefix/suffix
-if [[ "$REVIEW_JSON" == *'['* ]]; then
-  # Extract from first [ to last ]
-  REVIEW_JSON=$(echo "$REVIEW_JSON" | sed -n '/\[/,/\]/p' | tr -d '\n' | sed 's/.*\(\[.*\]\).*/\1/')
-fi
-
-if echo "$REVIEW_JSON" | jq empty 2>/dev/null; then
-  echo "✅ Valid JSON format received"
-
-  # Validate the diagnostic format structure
-  if echo "$REVIEW_JSON" | jq -e '.source and .diagnostics' >/dev/null 2>&1; then
-    echo "✅ Proper diagnostic format detected"
-    # Save the diagnostic object directly (no conversion needed)
-    echo "$REVIEW_JSON" > ai-output.jsonl
-  else
-    echo "⚠️ Converting array format to diagnostic format..."
-    echo "🔍 Examining structure..."
-    echo "$REVIEW_JSON" | jq '.[0] | keys' 2>/dev/null || echo "Not an array format"
-
-    # Convert old array format to new diagnostic format if needed
-    if echo "$REVIEW_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
-      echo "✅ Converting from array format"
-      CONVERTED_JSON=$(echo "$REVIEW_JSON" | jq '{
-        "source": {"name": "ai-review", "url": ""},
-        "severity": "ERROR",
-        "diagnostics": [.[] | {
-          "message": (if .message | type == "object" then .message.text else .message end),
-          "location": .location,
-          "severity": .severity,
-          "code": {"value": "ai-review", "url": ""}
-        }]
-      }')
-      echo "$CONVERTED_JSON" > ai-output.jsonl
-    else
-      echo "🔄 Treating as single object, wrapping in diagnostic format"
-      CONVERTED_JSON=$(echo "$REVIEW_JSON" | jq '{
-        "source": {"name": "ai-review", "url": ""},
-        "severity": .severity // "INFO",
-        "diagnostics": [{
-          "message": (if .message | type == "object" then .message.text else (.message // "AI Review")),
-          "location": (.location // {"path": "README.md", "range": {"start": {"line": 1, "column": 1}, "end": {"line": 1, "column": 1}}}),
-          "severity": (.severity // "INFO"),
-          "code": {"value": "ai-review", "url": ""}
-        }]
-      }')
-      echo "$CONVERTED_JSON" > ai-output.jsonl
-    fi
-  fi
+# Check if the response is already in proper reviewdog diagnostic format
+if echo "$REVIEW_JSON" | jq -e '.source and .diagnostics' >/dev/null 2>&1; then
+  echo "✅ Proper reviewdog diagnostic format detected"
+  echo "$REVIEW_JSON" > ai-output.jsonl
+elif echo "$REVIEW_JSON" | jq -e 'type == "array" and length > 0' >/dev/null 2>&1; then
+  echo "✅ Converting array format to reviewdog diagnostic format"
+  # Convert array to proper reviewdog format
+  CONVERTED_JSON=$(echo "$REVIEW_JSON" | jq '{
+    "source": {"name": "ai-review", "url": ""},
+    "diagnostics": [.[] | {
+      "message": (if .message then .message else "Code review issue" end),
+      "location": .location,
+      "severity": (.severity // "INFO"),
+      "code": {"value": "ai-review", "url": ""}
+    }]
+  }')
+  echo "$CONVERTED_JSON" > ai-output.jsonl
+  echo "🔧 Converted to proper format"
 else
-  echo "⚠️ Invalid JSON format, creating fallback format..."
-  echo "📄 Raw AI response (first 200 chars):"
-  echo "$REVIEW_JSON" | head -c 200
-  echo ""
+  echo "⚠️ Unexpected format, creating fallback..."
+  echo "📄 Raw response format:"
+  echo "$REVIEW_JSON" | jq type 2>/dev/null || echo "Not valid JSON"
 
-  # Fallback: create a single diagnostic object
-  REVIEW_ESCAPED=$(echo "$REVIEW_JSON" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' '\r' | sed 's/\r/\\n/g')
+  # Create fallback format
   cat > ai-output.jsonl << EOF
 {
   "source": {"name": "ai-review", "url": ""},
-  "severity": "INFO",
   "diagnostics": [{
-    "message": "🤖 AI Code Review: $REVIEW_ESCAPED",
+    "message": "AI Review completed but response format was unexpected",
     "location": {
       "path": "README.md",
       "range": {"start": {"line": 1, "column": 1}, "end": {"line": 1, "column": 1}}
@@ -275,6 +236,14 @@ else
   }]
 }
 EOF
+fi
+
+# Validate final output format
+if [[ -f ai-output.jsonl ]] && echo "$(cat ai-output.jsonl)" | jq empty 2>/dev/null; then
+  echo "✅ Final reviewdog format validated"
+else
+  echo "❌ Failed to create valid reviewdog format"
+  exit 1
 fi
 
 # Display the review for logging
