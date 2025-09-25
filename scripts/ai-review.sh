@@ -100,24 +100,12 @@ echo "ℹ️ Using AI Gateway at $AI_GATEWAY_URL"
 
 echo "🤖 Sending to AI for review..."
 
-# Write diff to a temporary file for reference
-echo "$DIFF" > ai-diff.txt
-
 # Generate diff with line numbers for AI analysis
-echo "🔢 Generating diff with line numbers..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SCRIPT_DIR/showlinenum.awk" ]]; then
   NUMBERED_DIFF=$(echo "$DIFF" | awk -f "$SCRIPT_DIR/showlinenum.awk")
-  echo "$NUMBERED_DIFF" > ai-diff-with-lines.txt
-  echo "✅ Diff with line numbers generated"
-  echo "🔍 First 20 lines of numbered diff:"
-  head -20 ai-diff-with-lines.txt
-
-  # Use numbered diff for AI analysis
   DIFF_FOR_AI="$NUMBERED_DIFF"
-  echo "✅ Using numbered diff for AI analysis"
 else
-  echo "⚠️ showlinenum.awk not found at $SCRIPT_DIR/showlinenum.awk, using raw diff"
   DIFF_FOR_AI="$DIFF"
 fi
 
@@ -169,7 +157,6 @@ API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$AI_GATEWAY_URL" \
 HTTP_STATUS=$(echo "$API_RESPONSE" | tail -n1 | sed 's/HTTP_STATUS://')
 API_BODY=$(echo "$API_RESPONSE" | sed '$d')
 
-echo "🔍 API Status: $HTTP_STATUS"
 
 # Check HTTP status
 if [[ "$HTTP_STATUS" != "200" ]]; then
@@ -246,34 +233,6 @@ else
   exit 1
 fi
 
-# Display the review for logging
-echo "📝 AI Review Output:"
-if [[ -f ai-output.jsonl ]]; then
-  # Pretty print the JSON for logging
-  echo "$REVIEW_JSON" | jq '.' 2>/dev/null || echo "$REVIEW_JSON"
-
-  # Line number verification if showlinenum output exists
-  if [[ -f ai-diff-with-lines.txt ]]; then
-    echo ""
-    echo "🔍 Line Number Verification:"
-    echo "Comparing AI reported line numbers with actual diff line numbers..."
-
-    # Extract line numbers from AI output and show corresponding lines from numbered diff
-    if echo "$REVIEW_JSON" | jq -e '.diagnostics' >/dev/null 2>&1; then
-      echo "$REVIEW_JSON" | jq -r '.diagnostics[] | "Line \(.location.range.start.line): \(.message)"' | while read -r line; do
-        echo "AI: $line"
-        line_num=$(echo "$line" | sed 's/Line \([0-9]*\):.*/\1/')
-        if [[ -n "$line_num" && "$line_num" -gt 0 ]]; then
-          echo "Diff context around line $line_num:"
-          grep -n "^$line_num:" ai-diff-with-lines.txt | head -3 || echo "  (line not found in numbered diff)"
-        fi
-        echo ""
-      done
-    fi
-  fi
-else
-  echo "No review output generated"
-fi
 
 # Check if GitHub token is available for reviewdog
 if [[ -n "$GITHUB_TOKEN" ]]; then
@@ -288,15 +247,11 @@ if [[ -n "$GITHUB_TOKEN" ]]; then
     echo "📝 Event: $(basename "$GITHUB_EVENT_PATH")"
 
     # Use reviewdog with the structured JSON response
-    echo "🔍 Checking AI review content:"
     if [[ -f ai-output.jsonl ]]; then
-      cat ai-output.jsonl
-      echo ""
-      echo "🚀 Running reviewdog with structured AI response..."
+      echo "🚀 Running reviewdog..."
 
       # Use the diagnostic format file
       INPUT_FILE="ai-output.jsonl"
-      echo "✅ Using reviewdog diagnostic format"
 
       # Try github-pr-review reporter with diagnostic input
       if ! cat "$INPUT_FILE" | $HOME/bin/reviewdog \
@@ -330,10 +285,9 @@ else
   echo "📄 Review JSON output saved to ai-output.jsonl"
   # Show the review locally
   if [[ -f ai-output.jsonl ]]; then
-    echo "🔍 AI Review Summary:"
     cat ai-output.jsonl | $HOME/bin/reviewdog -f=rdjson -name="ai-review" -reporter=local 2>/dev/null || echo "Review saved to ai-output.jsonl"
   fi
 fi
 
 # Cleanup temporary files
-rm -f ai-output-lines.jsonl 2>/dev/null
+rm -f ai-diff.txt ai-diff-with-lines.txt ai-output-lines.jsonl 2>/dev/null

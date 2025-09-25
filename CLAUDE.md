@@ -4,15 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **Smart Code Review GitHub Action** that automatically detects project language/framework and runs appropriate code review tools with reviewdog integration. The action combines traditional linting tools with AI-powered code review using OpenAI's API.
+This is a **Smart Code Review GitHub Action** that automatically detects project language/framework and runs appropriate code review tools with reviewdog integration. The action combines traditional linting tools with AI-powered code review using an AI Gateway service.
 
 ## Architecture
 
 - **Composite Action**: Uses `action.yml` configuration with shell script execution
 - **Two-stage Process**:
-  1. `detect-language.sh` - Detects language based on config files (package.json, requirements.txt, etc.)
-  2. `ai-review.sh` - Performs AI-powered review and formats output for reviewdog
+  1. `detect-language.sh` - Detects language and runs appropriate linters
+  2. `ai-review.sh` - Performs AI-powered review via gateway and formats output for reviewdog
 - **Language Support**: Node.js/TS, Python, Java, Go, .NET with corresponding linters
+- **AI Gateway Integration**: Uses external AI gateway service instead of direct API calls
 
 ## Key Commands
 
@@ -22,7 +23,8 @@ This is a **Smart Code Review GitHub Action** that automatically detects project
 bash scripts/detect-language.sh
 
 # Test AI review (requires environment variables)
-export OPENAI_API_KEY="your-key"
+export AI_GATEWAY_URL="https://your-gateway.com/api/review"
+export AI_GATEWAY_API_KEY="your-api-key"
 export GITHUB_TOKEN="your-token"
 bash scripts/ai-review.sh
 ```
@@ -48,7 +50,10 @@ bash -n scripts/ai-review.sh
 ## Required Environment Variables
 
 - `GITHUB_TOKEN`: Required for reviewdog PR comments (automatically provided in GitHub Actions)
-- `OPENAI_API_KEY`: Required for AI-powered code review functionality
+- `AI_GATEWAY_URL`: Required for AI Gateway service endpoint
+- `AI_GATEWAY_API_KEY`: Required for AI Gateway authentication
+- `AI_MODEL`: Optional AI model selection (default: gemini-2.0-flash)
+- `AI_PROVIDER`: Optional AI provider selection (default: gemini)
 
 **Important**: The script automatically sets `REVIEWDOG_GITHUB_API_TOKEN=$GITHUB_TOKEN` for reviewdog integration.
 
@@ -83,6 +88,6 @@ External tools used:
 
 - `action.yml`: GitHub Action configuration and inputs
 - `scripts/detect-language.sh`: Language detection logic
-- `scripts/ai-review.sh`: AI review implementation with OpenAI integration
+- `scripts/ai-review.sh`: AI review implementation with AI Gateway integration
 - `README.md`: User-facing documentation
 - `REQUIREMENT.md`: Detailed Vietnamese requirements specification
