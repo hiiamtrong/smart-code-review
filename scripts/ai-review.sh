@@ -147,7 +147,7 @@ if ! echo "$JSON_PAYLOAD" | jq empty 2>/dev/null; then
   exit 1
 fi
 
-API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$AI_GATEWAY_URL" \
+API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$AI_GATEWAY_URL/review" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $AI_GATEWAY_API_KEY" \
   -X POST \
