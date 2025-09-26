@@ -27,6 +27,35 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        echo "Checking and installing required dependencies..."
+
+        # Update package list
+        sudo apt-get update
+
+        # Install required packages if not present
+        PACKAGES_TO_INSTALL=""
+
+        if ! command -v jq &> /dev/null; then
+          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL jq"
+        fi
+
+        if ! command -v curl &> /dev/null; then
+          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL curl"
+        fi
+
+        if ! command -v git &> /dev/null; then
+          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL git"
+        fi
+
+        if [ -n "$PACKAGES_TO_INSTALL" ]; then
+          echo "Installing:$PACKAGES_TO_INSTALL"
+          sudo apt-get install -y $PACKAGES_TO_INSTALL
+        else
+          echo "All required dependencies are already installed"
+        fi
     - name: Smart Code Review
       shell: bash
       env:
