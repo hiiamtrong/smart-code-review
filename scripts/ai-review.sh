@@ -132,19 +132,23 @@ echo "📡 Making API request via gateway..."
 COMMIT_HASH=$(git rev-parse HEAD)
 REPO_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}"
 
-# Extract PR number properly from GitHub environment
+# Extract PR number and branch name properly from GitHub environment
 if [[ -n "$GITHUB_REF" && "$GITHUB_REF" =~ refs/pull/([0-9]+) ]]; then
   PR_NUMBER="${BASH_REMATCH[1]}"
+  # For PRs, use GITHUB_HEAD_REF which contains the actual branch name
+  BRANCH_NAME="${GITHUB_HEAD_REF:-${CURRENT_BRANCH:-$GITHUB_REF_NAME}}"
 elif [[ -n "$GITHUB_EVENT_PATH" && -f "$GITHUB_EVENT_PATH" ]]; then
   PR_NUMBER=$(jq -r '.number // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || echo "")
+  BRANCH_NAME="${GITHUB_HEAD_REF:-${CURRENT_BRANCH:-$GITHUB_REF_NAME}}"
 else
   PR_NUMBER=""
+  BRANCH_NAME="${CURRENT_BRANCH:-$GITHUB_REF_NAME}"
 fi
 
 echo "📋 Repository info:"
 echo "   - Repo: $GITHUB_REPOSITORY"
 echo "   - Commit: ${COMMIT_HASH:0:8}"
-echo "   - Branch: ${CURRENT_BRANCH:-$GITHUB_REF_NAME}"
+echo "   - Branch: $BRANCH_NAME"
 echo "   - PR: ${PR_NUMBER}"
 JSON_PAYLOAD=$(jq -n \
   --arg git_diff "$DIFF_FOR_AI" \
@@ -152,7 +156,7 @@ JSON_PAYLOAD=$(jq -n \
   --arg ai_model "${AI_MODEL:-gemini-2.0-flash}" \
   --arg ai_provider "${AI_PROVIDER:-google}" \
   --arg commit_hash "$COMMIT_HASH" \
-  --arg branch_name "${CURRENT_BRANCH:-$GITHUB_REF_NAME}" \
+  --arg branch_name "$BRANCH_NAME" \
   --arg pr_number "$PR_NUMBER" \
   --arg repo_url "$REPO_URL" \
   '{
