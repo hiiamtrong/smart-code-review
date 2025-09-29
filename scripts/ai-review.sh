@@ -128,17 +128,37 @@ echo "📝 Detected language: $LANGUAGE"
 # Use gateway API
 echo "📡 Making API request via gateway..."
 
+# Collect git and repository information
+COMMIT_HASH=$(git rev-parse HEAD)
+REPO_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}"
+PR_NUMBER="${GITHUB_REF_NAME##*/}"  # Extract PR number from refs/pull/123/merge
+
+echo "📋 Repository info:"
+echo "   - Repo: $GITHUB_REPOSITORY"
+echo "   - Commit: ${COMMIT_HASH:0:8}"
+echo "   - Branch: ${CURRENT_BRANCH:-$GITHUB_REF_NAME}"
+echo "   - PR: ${PR_NUMBER}"
 JSON_PAYLOAD=$(jq -n \
   --arg git_diff "$DIFF_FOR_AI" \
   --arg language "$LANGUAGE" \
   --arg ai_model "${AI_MODEL:-gemini-2.0-flash}" \
   --arg ai_provider "${AI_PROVIDER:-google}" \
+  --arg commit_hash "$COMMIT_HASH" \
+  --arg branch_name "${CURRENT_BRANCH:-$GITHUB_REF_NAME}" \
+  --arg pr_number "$PR_NUMBER" \
+  --arg repo_url "$REPO_URL" \
   '{
     "ai_model": $ai_model,
     "ai_provider": $ai_provider,
     "git_diff": $git_diff,
     "language": $language,
-    "review_mode": "string"
+    "review_mode": "string",
+    "git_info": {
+      "commit_hash": $commit_hash,
+      "branch_name": $branch_name,
+      "pr_number": $pr_number,
+      "repo_url": $repo_url
+    }
   }')
 
 # Validate the JSON payload
