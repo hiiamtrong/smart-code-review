@@ -131,7 +131,15 @@ echo "📡 Making API request via gateway..."
 # Collect git and repository information
 COMMIT_HASH=$(git rev-parse HEAD)
 REPO_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}"
-PR_NUMBER="${GITHUB_REF_NAME##*/}"  # Extract PR number from refs/pull/123/merge
+
+# Extract PR number properly from GitHub environment
+if [[ -n "$GITHUB_REF" && "$GITHUB_REF" =~ refs/pull/([0-9]+) ]]; then
+  PR_NUMBER="${BASH_REMATCH[1]}"
+elif [[ -n "$GITHUB_EVENT_PATH" && -f "$GITHUB_EVENT_PATH" ]]; then
+  PR_NUMBER=$(jq -r '.number // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || echo "")
+else
+  PR_NUMBER=""
+fi
 
 echo "📋 Repository info:"
 echo "   - Repo: $GITHUB_REPOSITORY"
@@ -166,6 +174,10 @@ if ! echo "$JSON_PAYLOAD" | jq empty 2>/dev/null; then
   echo "❌ Generated invalid JSON payload"
   exit 1
 fi
+
+# Print payload 
+echo "📄 JSON Payload"
+echo "$JSON_PAYLOAD" | jq '.' 2>/dev/null || echo "Failed to parse JSON payload"
 
 API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$AI_GATEWAY_URL/review" \
   -H "Content-Type: application/json" \
