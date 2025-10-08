@@ -132,6 +132,12 @@ echo "📡 Making API request via gateway..."
 COMMIT_HASH=$(git rev-parse HEAD)
 REPO_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}"
 
+# Extract git user information
+AUTHOR_NAME=$(git log -1 --format='%an')
+AUTHOR_EMAIL=$(git log -1 --format='%ae')
+COMMITTER_NAME=$(git log -1 --format='%cn')
+COMMITTER_EMAIL=$(git log -1 --format='%ce')
+
 # Extract PR number and branch name properly from GitHub environment
 if [[ -n "$GITHUB_REF" && "$GITHUB_REF" =~ refs/pull/([0-9]+) ]]; then
   PR_NUMBER="${BASH_REMATCH[1]}"
@@ -150,6 +156,7 @@ echo "   - Repo: $GITHUB_REPOSITORY"
 echo "   - Commit: ${COMMIT_HASH:0:8}"
 echo "   - Branch: $BRANCH_NAME"
 echo "   - PR: ${PR_NUMBER}"
+echo "   - Author: $AUTHOR_NAME <$AUTHOR_EMAIL>"
 JSON_PAYLOAD=$(jq -n \
   --arg git_diff "$DIFF_FOR_AI" \
   --arg language "$LANGUAGE" \
@@ -159,6 +166,10 @@ JSON_PAYLOAD=$(jq -n \
   --arg branch_name "$BRANCH_NAME" \
   --arg pr_number "$PR_NUMBER" \
   --arg repo_url "$REPO_URL" \
+  --arg author_name "$AUTHOR_NAME" \
+  --arg author_email "$AUTHOR_EMAIL" \
+  --arg committer_name "$COMMITTER_NAME" \
+  --arg committer_email "$COMMITTER_EMAIL" \
   '{
     "ai_model": $ai_model,
     "ai_provider": $ai_provider,
@@ -169,7 +180,15 @@ JSON_PAYLOAD=$(jq -n \
       "commit_hash": $commit_hash,
       "branch_name": $branch_name,
       "pr_number": $pr_number,
-      "repo_url": $repo_url
+      "repo_url": $repo_url,
+      "author": {
+        "name": $author_name,
+        "email": $author_email
+      },
+      "committer": {
+        "name": $committer_name,
+        "email": $committer_email
+      }
     }
   }')
 
