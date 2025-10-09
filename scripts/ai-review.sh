@@ -89,7 +89,13 @@ IGNORE_FILE="$(dirname "$SCRIPT_DIR")/.aireviewignore"
 
 if [[ -f "$IGNORE_FILE" ]]; then
   echo "🔍 Applying ignore patterns from .aireviewignore..."
-  FILTERED_DIFF=$(bash "$SCRIPT_DIR/filter-ignored-files.sh" "$DIFF" "$IGNORE_FILE")
+  
+  # Use temp file to avoid "Argument list too long" error
+  TEMP_DIFF=$(mktemp)
+  echo "$DIFF" > "$TEMP_DIFF"
+  
+  FILTERED_DIFF=$(bash "$SCRIPT_DIR/filter-ignored-files.sh" "$TEMP_DIFF" "$IGNORE_FILE")
+  rm -f "$TEMP_DIFF"
   
   # Check if all files were filtered out
   if [[ -z "$FILTERED_DIFF" || "$FILTERED_DIFF" == "No changes detected" ]]; then

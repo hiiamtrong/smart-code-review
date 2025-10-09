@@ -3,8 +3,20 @@
 
 set -e
 
-DIFF_INPUT="$1"
-IGNORE_FILE="${2:-.aireviewignore}"
+# Read from stdin or file
+if [[ -n "$1" && -f "$1" ]]; then
+  # First argument is a file path
+  DIFF_INPUT=$(cat "$1")
+  IGNORE_FILE="${2:-.aireviewignore}"
+elif [[ -n "$1" && "$1" != "-" ]]; then
+  # First argument is the ignore file, read diff from stdin
+  IGNORE_FILE="$1"
+  DIFF_INPUT=$(cat)
+else
+  # No args or "-", read from stdin
+  DIFF_INPUT=$(cat)
+  IGNORE_FILE="${1:-.aireviewignore}"
+fi
 
 # If no ignore file exists, output the original diff
 if [[ ! -f "$IGNORE_FILE" ]]; then
