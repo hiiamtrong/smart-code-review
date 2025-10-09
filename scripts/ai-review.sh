@@ -83,13 +83,6 @@ if [[ -z "$DIFF" || "$DIFF" == "No changes detected" ]]; then
   exit 0
 fi
 
-# Check if diff is too large for API (OpenAI has token limits)
-if [[ $DIFF_CHARS -gt 50000 ]]; then
-  echo "⚠️ Diff is very large ($DIFF_CHARS chars), truncating for API..."
-  DIFF=$(echo "$DIFF" | head -c 40000)
-  echo "📊 Truncated to: $(echo "$DIFF" | wc -c) characters"
-fi
-
 # Check if gateway URL is set
 if [[ -z "$AI_GATEWAY_URL" ]]; then
   echo "⚠️ AI_GATEWAY_URL not set, skipping AI review"
@@ -103,7 +96,11 @@ echo "🤖 Sending to AI for review..."
 # Generate diff with line numbers for AI analysis
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SCRIPT_DIR/showlinenum.awk" ]]; then
-  NUMBERED_DIFF=$(echo "$DIFF" | awk -f "$SCRIPT_DIR/showlinenum.awk")
+  # Use temp file to avoid pipe buffer issues with large diffs
+  TEMP_DIFF_INPUT=$(mktemp)
+  echo "$DIFF" > "$TEMP_DIFF_INPUT"
+  NUMBERED_DIFF=$(awk -f "$SCRIPT_DIR/showlinenum.awk" "$TEMP_DIFF_INPUT")
+  rm -f "$TEMP_DIFF_INPUT"
   DIFF_FOR_AI="$NUMBERED_DIFF"
 else
   DIFF_FOR_AI="$DIFF"
@@ -157,8 +154,13 @@ echo "   - Commit: ${COMMIT_HASH:0:8}"
 echo "   - Branch: $BRANCH_NAME"
 echo "   - PR: ${PR_NUMBER}"
 echo "   - Author: $AUTHOR_NAME <$AUTHOR_EMAIL>"
+
+# Save diff to temporary file for upload
+DIFF_FILE=$(mktemp)
+echo "$DIFF_FOR_AI" > "$DIFF_FILE"
+
+# Create JSON payload without git_diff (will be sent as file)
 JSON_PAYLOAD=$(jq -n \
-  --arg git_diff "$DIFF_FOR_AI" \
   --arg language "$LANGUAGE" \
   --arg ai_model "${AI_MODEL:-gemini-2.0-flash}" \
   --arg ai_provider "${AI_PROVIDER:-google}" \
@@ -173,9 +175,8 @@ JSON_PAYLOAD=$(jq -n \
   '{
     "ai_model": $ai_model,
     "ai_provider": $ai_provider,
-    "git_diff": $git_diff,
     "language": $language,
-    "review_mode": "string",
+    "review_mode": "file",
     "git_info": {
       "commit_hash": $commit_hash,
       "branch_name": $branch_name,
@@ -195,23 +196,28 @@ JSON_PAYLOAD=$(jq -n \
 # Validate the JSON payload
 if ! echo "$JSON_PAYLOAD" | jq empty 2>/dev/null; then
   echo "❌ Generated invalid JSON payload"
+  rm -f "$DIFF_FILE"
   exit 1
 fi
 
-# Print payload 
-echo "📄 JSON Payload"
+# Print payload info (without the large diff content)
+echo "📄 Request metadata:"
 echo "$JSON_PAYLOAD" | jq '.' 2>/dev/null || echo "Failed to parse JSON payload"
+echo "📎 Diff file size: $(wc -c < "$DIFF_FILE") bytes"
 
+# Send request with multipart/form-data (file upload)
 API_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$AI_GATEWAY_URL/review" \
-  -H "Content-Type: application/json" \
   -H "X-API-Key: $AI_GATEWAY_API_KEY" \
   -X POST \
-  -d "$JSON_PAYLOAD")
+  -F "metadata=$JSON_PAYLOAD" \
+  -F "git_diff=@$DIFF_FILE")
 
 # Split response and status
 HTTP_STATUS=$(echo "$API_RESPONSE" | tail -n1 | sed 's/HTTP_STATUS://')
 API_BODY=$(echo "$API_RESPONSE" | sed '$d')
 
+# Cleanup diff file
+rm -f "$DIFF_FILE"
 
 # Check HTTP status
 if [[ "$HTTP_STATUS" != "200" ]]; then
@@ -405,4 +411,4 @@ else
 fi
 
 # Cleanup temporary files
-rm -f ai-diff.txt ai-diff-with-lines.txt ai-output-lines.jsonl ai-overview.txt 2>/dev/null
+rm -f ai-diff.txt ai-diff-with-lines.txt ai-output-lines.jsonl ai-overview.txt "$TEMP_DIFF_INPUT" "$DIFF_FILE" 2>/dev/null
