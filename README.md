@@ -70,6 +70,35 @@ jobs:
 
 ## ⚙️ Configuration
 
+### Ignore Files from Review
+
+Create a `.aireviewignore` file in your repository root to exclude files from AI review:
+
+```gitignore
+# Dependencies and lock files
+package-lock.json
+yarn.lock
+*.lock
+
+# Build outputs
+dist/*
+build/*
+*.min.js
+
+# Generated files
+*.generated.*
+
+# Documentation
+*.md
+docs/*
+```
+
+The syntax is similar to `.gitignore`:
+- Use `*` for wildcards: `*.test.js`
+- Use `**` for directory matching: `**/fixtures/*`
+- Use `#` for comments
+- One pattern per line
+
 ### Required Inputs
 
 | Input                | Description                  | Example                                  |

@@ -1,0 +1,47 @@
+# AI Review Ignore File
+# Add file patterns here to exclude them from AI code review
+# Syntax similar to .gitignore
+
+# Dependencies and lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+Gemfile.lock
+composer.lock
+poetry.lock
+
+# Build outputs
+dist/*
+build/*
+*.min.js
+*.min.css
+*.bundle.js
+
+# Generated files
+*.generated.*
+*-generated.*
+
+# Documentation
+*.md
+docs/*
+
+# Configuration files
+*.config.js
+*.config.ts
+
+# Test fixtures and mocks
+**/__fixtures__/*
+**/__mocks__/*
+*.mock.*
+*.test.data.*
+
+# Large data files
+*.json
+*.csv
+*.xml
+
+# Examples (uncomment to use):
+# node_modules/*
+# vendor/*
+# .next/*
+# coverage/*

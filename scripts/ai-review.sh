@@ -83,6 +83,28 @@ if [[ -z "$DIFF" || "$DIFF" == "No changes detected" ]]; then
   exit 0
 fi
 
+# Filter out ignored files based on .aireviewignore
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IGNORE_FILE="$(dirname "$SCRIPT_DIR")/.aireviewignore"
+
+if [[ -f "$IGNORE_FILE" ]]; then
+  echo "🔍 Applying ignore patterns from .aireviewignore..."
+  FILTERED_DIFF=$(bash "$SCRIPT_DIR/filter-ignored-files.sh" "$DIFF" "$IGNORE_FILE")
+  
+  # Check if all files were filtered out
+  if [[ -z "$FILTERED_DIFF" || "$FILTERED_DIFF" == "No changes detected" ]]; then
+    echo "ℹ️ All changes were filtered out by .aireviewignore, skipping AI analysis"
+    exit 0
+  fi
+  
+  DIFF="$FILTERED_DIFF"
+  FILTERED_LINES=$(echo "$DIFF" | wc -l)
+  FILTERED_CHARS=$(echo "$DIFF" | wc -c)
+  echo "📊 Filtered diff size: $FILTERED_LINES lines, $FILTERED_CHARS characters"
+else
+  echo "ℹ️ No .aireviewignore file found, reviewing all changes"
+fi
+
 # Check if gateway URL is set
 if [[ -z "$AI_GATEWAY_URL" ]]; then
   echo "⚠️ AI_GATEWAY_URL not set, skipping AI review"
