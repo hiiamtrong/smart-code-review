@@ -205,7 +205,7 @@ detect_language() {
 }
 
 # ============================================
-# Call AI Gateway
+# Call AI Gateway (with SSE Streaming)
 # ============================================
 
 call_ai_gateway() {
@@ -220,7 +220,174 @@ call_ai_gateway() {
   local diff_file=$(mktemp)
   echo "$DIFF" > "$diff_file"
 
-  # Create JSON payload
+  # Create JSON payload with streaming enabled
+  local json_payload=$(jq -n \
+    --arg language "$LANGUAGE" \
+    --arg ai_model "$AI_MODEL" \
+    --arg ai_provider "$AI_PROVIDER" \
+    --arg commit_hash "$commit_hash" \
+    --arg branch_name "$branch_name" \
+    --arg author_name "$author_name" \
+    --arg author_email "$author_email" \
+    --arg repo_url "$repo_url" \
+    '{
+      "ai_model": $ai_model,
+      "ai_provider": $ai_provider,
+      "language": $language,
+      "review_mode": "file",
+      "stream": true,
+      "git_info": {
+        "commit_hash": $commit_hash,
+        "branch_name": $branch_name,
+        "repo_url": $repo_url,
+        "author": {
+          "name": $author_name,
+          "email": $author_email
+        }
+      }
+    }')
+
+  # Temp files for processing
+  local result_file=$(mktemp)
+  local diagnostics_file=$(mktemp)
+  local current_event=""
+
+  echo ""
+  print_separator
+  log_info "AI is reviewing your code..."
+  echo ""
+
+  # Initialize diagnostics array
+  echo "[]" > "$diagnostics_file"
+
+  # Make streaming API request with SSE
+  curl -sN "$AI_GATEWAY_URL/review" \
+    -H "X-API-Key: $AI_GATEWAY_API_KEY" \
+    -H "Accept: text/event-stream" \
+    -X POST \
+    -F "metadata=$json_payload" \
+    -F "git_diff=@$diff_file" 2>/dev/null | while IFS= read -r line; do
+
+    # Skip empty lines and carriage returns
+    line=$(echo "$line" | tr -d '\r')
+    [[ -z "$line" ]] && continue
+
+    # Parse event type line
+    if [[ "$line" =~ ^event:\ (.*)$ ]]; then
+      current_event="${BASH_REMATCH[1]}"
+      continue
+    fi
+
+    # Parse data line
+    if [[ "$line" =~ ^data:\ (.*)$ ]]; then
+      local data="${BASH_REMATCH[1]}"
+
+      # Skip empty data
+      [[ -z "$data" ]] && continue
+
+      # Try to parse as JSON
+      if ! echo "$data" | jq empty 2>/dev/null; then
+        continue
+      fi
+
+      case "$current_event" in
+        "progress")
+          # Show progress info
+          local event_type=$(echo "$data" | jq -r '.type // ""' 2>/dev/null)
+          local total_chunks=$(echo "$data" | jq -r '.total_chunks // 0' 2>/dev/null)
+
+          if [[ "$event_type" == "start" ]]; then
+            echo -e "${CYAN}  ▸${NC} Analyzing $total_chunks file(s)..."
+          elif [[ "$event_type" == "chunk" ]]; then
+            local chunk_num=$(echo "$data" | jq -r '.chunk // 0' 2>/dev/null)
+            echo -e "${CYAN}  ▸${NC} Processing chunk $chunk_num/$total_chunks..."
+          fi
+          ;;
+
+        "diagnostic")
+          # Show issue as it's found and collect it
+          local severity=$(echo "$data" | jq -r '.severity // "INFO"' 2>/dev/null)
+          local message=$(echo "$data" | jq -r '.message // ""' 2>/dev/null)
+          local file=$(echo "$data" | jq -r '.location.path // "unknown"' 2>/dev/null)
+          local line_num=$(echo "$data" | jq -r '.location.range.start.line // 0' 2>/dev/null)
+
+          if [[ -n "$message" ]]; then
+            print_issue "$severity" "$file" "$line_num" "$message"
+            echo ""
+
+            # Append to diagnostics collection
+            local current_diags=$(cat "$diagnostics_file")
+            echo "$current_diags" | jq --argjson new "$data" '. + [$new]' > "$diagnostics_file"
+          fi
+          ;;
+
+        "complete")
+          # Final summary - show overview and save result
+          local overview=$(echo "$data" | jq -r '.overview // ""' 2>/dev/null)
+          local total=$(echo "$data" | jq -r '.total_diagnostics // 0' 2>/dev/null)
+          local max_severity=$(echo "$data" | jq -r '.severity // "INFO"' 2>/dev/null)
+
+          if [[ -n "$overview" ]]; then
+            echo ""
+            echo -e "${BOLD}Overview:${NC}"
+            echo "$overview"
+          fi
+
+          # Build final result JSON
+          local diags=$(cat "$diagnostics_file")
+          jq -n \
+            --argjson diagnostics "$diags" \
+            --arg overview "$overview" \
+            --arg severity "$max_severity" \
+            '{
+              "source": {"name": "ai-review", "url": ""},
+              "diagnostics": $diagnostics,
+              "overview": $overview,
+              "max_severity": $severity
+            }' > "$result_file"
+          ;;
+
+        *)
+          # Unknown event - check if it contains diagnostics array (non-streaming fallback)
+          if echo "$data" | jq -e '.diagnostics' &>/dev/null; then
+            echo "$data" > "$result_file"
+          fi
+          ;;
+      esac
+    fi
+  done
+
+  # Cleanup diff file
+  rm -f "$diff_file"
+  rm -f "$diagnostics_file"
+
+  # Check if we got a result
+  if [[ -s "$result_file" ]]; then
+    REVIEW_JSON=$(cat "$result_file")
+    rm -f "$result_file"
+  else
+    # Fallback: try non-streaming request if SSE failed
+    rm -f "$result_file"
+    log_warn "Streaming failed, retrying with standard request..."
+    call_ai_gateway_sync
+    return
+  fi
+}
+
+# Fallback non-streaming API call
+call_ai_gateway_sync() {
+  # Collect git info
+  local commit_hash=$(git rev-parse HEAD 2>/dev/null || echo "staged")
+  local branch_name=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  local author_name=$(git config user.name 2>/dev/null || echo "unknown")
+  local author_email=$(git config user.email 2>/dev/null || echo "unknown")
+  local repo_url=$(git remote get-url origin 2>/dev/null || echo "local")
+
+  # Save diff to temp file
+  local diff_file=$(mktemp)
+  echo "$DIFF" > "$diff_file"
+
+  # Create JSON payload (no streaming)
   local json_payload=$(jq -n \
     --arg language "$LANGUAGE" \
     --arg ai_model "$AI_MODEL" \
@@ -301,19 +468,24 @@ display_results() {
   local warning_count=$(echo "$diagnostics" | jq '[.[] | select(.severity == "WARNING")] | length')
   local info_count=$(echo "$diagnostics" | jq '[.[] | select(.severity == "INFO")] | length')
 
-  # Display issues
-  echo ""
-  print_separator
+  # Check if this is from streaming (issues already displayed) or sync call
+  local is_streamed=$(echo "$REVIEW_JSON" | jq -r '.max_severity // ""' 2>/dev/null)
 
-  echo "$diagnostics" | jq -c '.[]' | while read -r issue; do
-    local severity=$(echo "$issue" | jq -r '.severity // "INFO"')
-    local message=$(echo "$issue" | jq -r '.message // "No message"')
-    local file=$(echo "$issue" | jq -r '.location.path // "unknown"')
-    local line=$(echo "$issue" | jq -r '.location.range.start.line // 0')
-
-    print_issue "$severity" "$file" "$line" "$message"
+  if [[ -z "$is_streamed" ]]; then
+    # Non-streaming response - display issues now
     echo ""
-  done
+    print_separator
+
+    echo "$diagnostics" | jq -c '.[]' | while read -r issue; do
+      local severity=$(echo "$issue" | jq -r '.severity // "INFO"')
+      local message=$(echo "$issue" | jq -r '.message // "No message"')
+      local file=$(echo "$issue" | jq -r '.location.path // "unknown"')
+      local line=$(echo "$issue" | jq -r '.location.range.start.line // 0')
+
+      print_issue "$severity" "$file" "$line" "$message"
+      echo ""
+    done
+  fi
 
   print_separator
   echo ""
