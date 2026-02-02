@@ -252,6 +252,7 @@ call_ai_gateway() {
   local diagnostics_file=$(mktemp)
   local text_buffer_file=$(mktemp)
   local has_diagnostics_file=$(mktemp)
+  local api_error_file=$(mktemp)
 
   echo ""
   print_separator
@@ -262,6 +263,7 @@ call_ai_gateway() {
   : > "$diagnostics_file"
   : > "$text_buffer_file"
   echo "0" > "$has_diagnostics_file"
+  echo "0" > "$api_error_file"
 
   # Store file paths in temp file for subshell access
   local current_event=""
@@ -420,6 +422,8 @@ call_ai_gateway() {
           printf "\r%-60s\r" ""
           local error_msg=$(echo "$data" | jq -r '.message // .error // "Unknown error"' 2>/dev/null)
           log_error "AI review error: $error_msg"
+          # Mark API error occurred
+          echo "1" > "$api_error_file"
           ;;
 
         *)
