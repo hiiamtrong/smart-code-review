@@ -206,6 +206,10 @@ The installer will:
 3. Set up the CLI tool and hook scripts
 4. Add `~/.local/bin` to your PATH
 
+**Optional:** For `ai-review diff` command, install gawk:
+- macOS: `brew install gawk`
+- Ubuntu: `sudo apt-get install gawk`
+
 ### Enable Hook in a Repository
 
 After installation, navigate to any git repository and run:
@@ -225,6 +229,8 @@ This installs the pre-commit hook that will review your staged changes before ea
 | `ai-review config` | View current configuration |
 | `ai-review config set KEY VALUE` | Update a config value |
 | `ai-review config edit` | Open config in editor |
+| `ai-review diff` | Show staged diff with line numbers |
+| `ai-review diff --all` | Show all changes (staged + unstaged) |
 | `ai-review status` | Check installation status |
 | `ai-review update` | Update to latest version |
 | `ai-review help` | Show help message |
