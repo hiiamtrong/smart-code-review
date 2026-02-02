@@ -20,32 +20,44 @@ CONFIG_FILE="$CONFIG_DIR/config"
 # Helper Functions
 # ============================================
 
+log_error() {
+  echo -e "${RED}[ERROR]${NC} $1"
+}
+
+log_warn() {
+  echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_info() {
+  echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+  echo -e "${GREEN}[OK]${NC} $1"
+}
+
 print_separator() {
-  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${CYAN}────────────────────────────────────────${NC}"
 }
 
-print_error_issue() {
-  local file="$1"
-  local line="$2"
-  local message="$3"
-  echo -e "${RED}❌ ERROR${NC}: $message"
-  echo -e "   ${BOLD}$file:$line${NC}"
-}
+print_issue() {
+  local severity="$1"
+  local file="$2"
+  local line="$3"
+  local message="$4"
 
-print_warning_issue() {
-  local file="$1"
-  local line="$2"
-  local message="$3"
-  echo -e "${YELLOW}⚠️  WARNING${NC}: $message"
-  echo -e "   ${BOLD}$file:$line${NC}"
-}
-
-print_info_issue() {
-  local file="$1"
-  local line="$2"
-  local message="$3"
-  echo -e "${BLUE}ℹ️  INFO${NC}: $message"
-  echo -e "   ${BOLD}$file:$line${NC}"
+  case "$severity" in
+    ERROR)
+      echo -e "${RED}[ERROR]${NC} $message"
+      ;;
+    WARNING)
+      echo -e "${YELLOW}[WARN]${NC} $message"
+      ;;
+    *)
+      echo -e "${BLUE}[INFO]${NC} $message"
+      ;;
+  esac
+  echo -e "        ${BOLD}$file:$line${NC}"
 }
 
 # ============================================
@@ -54,20 +66,20 @@ print_info_issue() {
 
 load_config() {
   if [[ ! -f "$CONFIG_FILE" ]]; then
-    echo -e "${RED}❌ Configuration not found at $CONFIG_FILE${NC}"
-    echo "Please run the installer first: bash install.sh"
+    log_error "Configuration not found at $CONFIG_FILE"
+    echo "Please run: ai-review setup"
     exit 1
   fi
 
   source "$CONFIG_FILE"
 
   if [[ -z "$AI_GATEWAY_URL" ]]; then
-    echo -e "${RED}❌ AI_GATEWAY_URL not configured${NC}"
+    log_error "AI_GATEWAY_URL not configured"
     exit 1
   fi
 
   if [[ -z "$AI_GATEWAY_API_KEY" ]]; then
-    echo -e "${RED}❌ AI_GATEWAY_API_KEY not configured${NC}"
+    log_error "AI_GATEWAY_API_KEY not configured"
     exit 1
   fi
 
@@ -84,13 +96,12 @@ get_staged_diff() {
   DIFF=$(git diff --cached)
 
   if [[ -z "$DIFF" ]]; then
-    echo -e "${GREEN}✅ No staged changes to review${NC}"
+    log_success "No staged changes to review"
     exit 0
   fi
 
   DIFF_LINES=$(echo "$DIFF" | wc -l)
-  DIFF_CHARS=$(echo "$DIFF" | wc -c)
-  echo -e "${BLUE}📊 Reviewing $DIFF_LINES lines of changes${NC}"
+  log_info "Reviewing $DIFF_LINES lines of changes"
 }
 
 # ============================================
@@ -105,7 +116,7 @@ filter_ignored_files() {
     return
   fi
 
-  echo -e "${BLUE}🔍 Applying ignore patterns...${NC}"
+  log_info "Applying ignore patterns..."
 
   # Read ignore patterns
   local patterns=()
@@ -161,7 +172,7 @@ filter_ignored_files() {
   fi
 
   if [[ -z "$filtered_diff" ]]; then
-    echo -e "${GREEN}✅ All changes are in ignored files, skipping review${NC}"
+    log_success "All changes are in ignored files, skipping review"
     exit 0
   fi
 
@@ -250,7 +261,7 @@ call_ai_gateway() {
   local api_body=$(echo "$api_response" | sed '$d')
 
   if [[ "$http_status" != "200" ]]; then
-    echo -e "${RED}❌ API request failed (HTTP $http_status)${NC}"
+    log_error "API request failed (HTTP $http_status)"
     echo "$api_body" | head -5
     exit 0  # Don't block commit on API failure
   fi
@@ -264,22 +275,22 @@ call_ai_gateway() {
 
 display_results() {
   if [[ -z "$REVIEW_JSON" ]]; then
-    echo -e "${GREEN}✅ No issues found${NC}"
-    return 0
+    log_success "No issues found"
+    exit 0
   fi
 
   # Check if valid JSON
   if ! echo "$REVIEW_JSON" | jq empty 2>/dev/null; then
-    echo -e "${YELLOW}⚠️  Could not parse AI response${NC}"
-    return 0
+    log_warn "Could not parse AI response"
+    exit 0
   fi
 
   # Extract diagnostics
   local diagnostics=$(echo "$REVIEW_JSON" | jq -c '.diagnostics // []' 2>/dev/null)
 
   if [[ "$diagnostics" == "[]" || "$diagnostics" == "null" ]]; then
-    echo -e "${GREEN}✅ No issues found${NC}"
-    return 0
+    log_success "No issues found"
+    exit 0
   fi
 
   # Count by severity
@@ -297,17 +308,7 @@ display_results() {
     local file=$(echo "$issue" | jq -r '.location.path // "unknown"')
     local line=$(echo "$issue" | jq -r '.location.range.start.line // 0')
 
-    case "$severity" in
-      ERROR)
-        print_error_issue "$file" "$line" "$message"
-        ;;
-      WARNING)
-        print_warning_issue "$file" "$line" "$message"
-        ;;
-      *)
-        print_info_issue "$file" "$line" "$message"
-        ;;
-    esac
+    print_issue "$severity" "$file" "$line" "$message"
     echo ""
   done
 
@@ -318,14 +319,14 @@ display_results() {
 
   # Determine exit code based on errors
   if [[ "$error_count" -gt 0 ]]; then
-    echo -e "${RED}🚫 Commit blocked - please fix ERROR issues first${NC}"
-    echo -e "   Use ${CYAN}git commit --no-verify${NC} to bypass (not recommended)"
+    log_error "Commit blocked - please fix ERROR issues first"
+    echo "        Use 'git commit --no-verify' to bypass (not recommended)"
     exit 1
   elif [[ "$warning_count" -gt 0 ]]; then
-    echo -e "${GREEN}✅ Commit allowed${NC} - but consider fixing warnings above"
+    log_success "Commit allowed - but consider fixing warnings above"
     exit 0
   else
-    echo -e "${GREEN}✅ Commit allowed${NC}"
+    log_success "Commit allowed"
     exit 0
   fi
 }
@@ -335,7 +336,7 @@ display_results() {
 # ============================================
 
 main() {
-  echo -e "${BLUE}🔍 AI Review analyzing your changes...${NC}"
+  log_info "AI Review analyzing your changes..."
   echo ""
 
   load_config

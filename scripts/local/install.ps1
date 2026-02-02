@@ -144,7 +144,7 @@ function Install-Scripts {
         Copy-Item "$ScriptDir\pre-commit.sh" "$HooksDir\pre-commit.sh" -Force
     } else {
         # Download from remote
-        $RepoUrl = "https://raw.githubusercontent.com/user/smart-code-review/main"
+        $RepoUrl = "https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main"
         Invoke-WebRequest -Uri "$RepoUrl/scripts/local/ai-review" -OutFile "$BinDir\ai-review"
         Invoke-WebRequest -Uri "$RepoUrl/scripts/local/pre-commit.sh" -OutFile "$HooksDir\pre-commit.sh"
     }

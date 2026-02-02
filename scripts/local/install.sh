@@ -6,6 +6,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Installation paths
@@ -13,8 +14,30 @@ CONFIG_DIR="$HOME/.config/ai-review"
 BIN_DIR="$HOME/.local/bin"
 HOOKS_DIR="$CONFIG_DIR/hooks"
 
-echo -e "${BLUE}🚀 AI Review Installer${NC}"
-echo "================================"
+log_info() {
+  echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+  echo -e "${GREEN}[OK]${NC} $1"
+}
+
+log_warn() {
+  echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+  echo -e "${RED}[ERROR]${NC} $1"
+}
+
+echo ""
+echo -e "${BOLD}AI Review Installer${NC}"
+echo "========================================"
+
+# Check if running interactively
+is_interactive() {
+  [[ -t 0 ]]
+}
 
 # Detect OS
 detect_os() {
@@ -30,38 +53,39 @@ detect_os() {
       fi
       ;;
     *)
-      echo -e "${RED}❌ Unsupported operating system${NC}"
+      log_error "Unsupported operating system"
       exit 1
       ;;
   esac
-  echo -e "${GREEN}✓${NC} Detected OS: $OS"
+  log_success "Detected OS: $OS"
 }
 
 # Install dependencies
 install_dependencies() {
-  echo -e "\n${BLUE}📦 Checking dependencies...${NC}"
+  echo ""
+  log_info "Checking dependencies..."
 
   # Check git
   if ! command -v git &> /dev/null; then
-    echo -e "${RED}❌ git is required but not installed${NC}"
+    log_error "git is required but not installed"
     exit 1
   fi
-  echo -e "${GREEN}✓${NC} git is installed"
+  log_success "git is installed"
 
   # Check curl
   if ! command -v curl &> /dev/null; then
-    echo -e "${RED}❌ curl is required but not installed${NC}"
+    log_error "curl is required but not installed"
     exit 1
   fi
-  echo -e "${GREEN}✓${NC} curl is installed"
+  log_success "curl is installed"
 
   # Check/install jq
   if ! command -v jq &> /dev/null; then
-    echo -e "${YELLOW}⚠${NC} jq not found, installing..."
+    log_warn "jq not found, installing..."
     case "$OS" in
       macos)
         if ! command -v brew &> /dev/null; then
-          echo -e "${YELLOW}⚠${NC} Homebrew not found, installing..."
+          log_warn "Homebrew not found, installing..."
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
         fi
         brew install jq
@@ -70,23 +94,24 @@ install_dependencies() {
         sudo apt-get update && sudo apt-get install -y jq
         ;;
     esac
-    echo -e "${GREEN}✓${NC} jq installed"
+    log_success "jq installed"
   else
-    echo -e "${GREEN}✓${NC} jq is installed"
+    log_success "jq is installed"
   fi
 }
 
 # Create directories
 create_directories() {
-  echo -e "\n${BLUE}📁 Creating directories...${NC}"
+  echo ""
+  log_info "Creating directories..."
 
   mkdir -p "$CONFIG_DIR"
   mkdir -p "$BIN_DIR"
   mkdir -p "$HOOKS_DIR"
 
-  echo -e "${GREEN}✓${NC} Created $CONFIG_DIR"
-  echo -e "${GREEN}✓${NC} Created $BIN_DIR"
-  echo -e "${GREEN}✓${NC} Created $HOOKS_DIR"
+  log_success "Created $CONFIG_DIR"
+  log_success "Created $BIN_DIR"
+  log_success "Created $HOOKS_DIR"
 }
 
 # Get script directory (works for both curl|bash and direct execution)
@@ -98,13 +123,14 @@ get_script_source() {
   else
     # Remote execution via curl|bash - download from repo
     SCRIPT_SOURCE="remote"
-    REPO_URL="https://raw.githubusercontent.com/user/smart-code-review/main"
+    REPO_URL="https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main"
   fi
 }
 
 # Install CLI and hook scripts
 install_scripts() {
-  echo -e "\n${BLUE}📥 Installing scripts...${NC}"
+  echo ""
+  log_info "Installing scripts..."
 
   get_script_source
 
@@ -121,20 +147,29 @@ install_scripts() {
   chmod +x "$BIN_DIR/ai-review"
   chmod +x "$HOOKS_DIR/pre-commit.sh"
 
-  echo -e "${GREEN}✓${NC} Installed ai-review CLI to $BIN_DIR/ai-review"
-  echo -e "${GREEN}✓${NC} Installed hook template to $HOOKS_DIR/pre-commit.sh"
+  log_success "Installed ai-review CLI to $BIN_DIR/ai-review"
+  log_success "Installed hook template to $HOOKS_DIR/pre-commit.sh"
 }
 
 # Interactive configuration
 configure_credentials() {
-  echo -e "\n${BLUE}⚙️  Configuration${NC}"
+  # Skip if not interactive (e.g., curl | bash)
+  if ! is_interactive; then
+    echo ""
+    log_warn "Non-interactive mode detected"
+    log_info "Run 'ai-review setup' to configure credentials"
+    return
+  fi
+
+  echo ""
+  log_info "Configuration"
   echo "Please provide your AI Gateway credentials:"
   echo ""
 
   # AI Gateway URL
   read -p "Enter AI Gateway URL: " AI_GATEWAY_URL
   while [[ -z "$AI_GATEWAY_URL" ]]; do
-    echo -e "${RED}URL is required${NC}"
+    log_error "URL is required"
     read -p "Enter AI Gateway URL: " AI_GATEWAY_URL
   done
 
@@ -142,7 +177,7 @@ configure_credentials() {
   read -sp "Enter AI Gateway API Key: " AI_GATEWAY_API_KEY
   echo ""
   while [[ -z "$AI_GATEWAY_API_KEY" ]]; do
-    echo -e "${RED}API Key is required${NC}"
+    log_error "API Key is required"
     read -sp "Enter AI Gateway API Key: " AI_GATEWAY_API_KEY
     echo ""
   done
@@ -167,16 +202,17 @@ AI_PROVIDER="$AI_PROVIDER"
 EOF
 
   chmod 600 "$CONFIG_DIR/config"
-  echo -e "\n${GREEN}✓${NC} Configuration saved to $CONFIG_DIR/config"
+  log_success "Configuration saved to $CONFIG_DIR/config"
 }
 
 # Add to PATH
 setup_path() {
-  echo -e "\n${BLUE}🔧 Setting up PATH...${NC}"
+  echo ""
+  log_info "Setting up PATH..."
 
   # Check if already in PATH
   if echo "$PATH" | grep -q "$BIN_DIR"; then
-    echo -e "${GREEN}✓${NC} $BIN_DIR is already in PATH"
+    log_success "$BIN_DIR is already in PATH"
     return
   fi
 
@@ -198,30 +234,36 @@ setup_path() {
       echo "" >> "$SHELL_CONFIG"
       echo "# Added by ai-review installer" >> "$SHELL_CONFIG"
       echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_CONFIG"
-      echo -e "${GREEN}✓${NC} Added $BIN_DIR to PATH in $SHELL_CONFIG"
+      log_success "Added $BIN_DIR to PATH in $SHELL_CONFIG"
     else
-      echo -e "${GREEN}✓${NC} PATH export already exists in $SHELL_CONFIG"
+      log_success "PATH export already exists in $SHELL_CONFIG"
     fi
   else
-    echo -e "${YELLOW}⚠${NC} Could not detect shell config file"
+    log_warn "Could not detect shell config file"
     echo "Please add the following to your shell config:"
     echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
   fi
 }
 
 # Print success message
-print_success() {
+print_success_message() {
   echo ""
-  echo -e "${GREEN}================================${NC}"
-  echo -e "${GREEN}✅ Installation complete!${NC}"
-  echo -e "${GREEN}================================${NC}"
+  echo "========================================"
+  echo -e "${GREEN}Installation complete!${NC}"
+  echo "========================================"
   echo ""
   echo "Next steps:"
-  echo "  1. Restart your terminal or run: source ~/.zshrc (or ~/.bashrc)"
+  if ! is_interactive; then
+    echo "  1. Run: ai-review setup"
+    echo "  2. Restart your terminal or run: source ~/.zshrc (or ~/.bashrc)"
+  else
+    echo "  1. Restart your terminal or run: source ~/.zshrc (or ~/.bashrc)"
+  fi
   echo "  2. Navigate to any git repository"
   echo "  3. Run: ai-review install"
   echo ""
   echo "Available commands:"
+  echo "  ai-review setup      - Configure credentials"
   echo "  ai-review install    - Install hook in current repo"
   echo "  ai-review uninstall  - Remove hook from current repo"
   echo "  ai-review config     - View/edit configuration"
@@ -239,7 +281,7 @@ main() {
   install_scripts
   configure_credentials
   setup_path
-  print_success
+  print_success_message
 }
 
 main
