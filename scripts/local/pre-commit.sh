@@ -441,11 +441,24 @@ call_ai_gateway() {
     -F "metadata=$json_payload" \
     -F "git_diff=@$diff_file" 2>/dev/null)
 
+  # Check if API error occurred
+  local had_api_error=$(cat "$api_error_file" 2>/dev/null || echo "0")
+
   # Cleanup temp files
   rm -f "$diff_file"
   rm -f "$diagnostics_file"
   rm -f "$text_buffer_file"
   rm -f "$has_diagnostics_file"
+  rm -f "$api_error_file"
+
+  # If API error occurred, block the commit
+  if [[ "$had_api_error" == "1" ]]; then
+    rm -f "$result_file"
+    echo ""
+    log_error "Commit blocked - AI review service error"
+    echo "        Use 'git commit --no-verify' to bypass"
+    exit 1
+  fi
 
   # Check if we got a result
   if [[ -s "$result_file" ]]; then
