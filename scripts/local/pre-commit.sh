@@ -311,14 +311,17 @@ call_ai_gateway() {
           ;;
 
         "text")
-          # Real-time AI typing - show spinner (optional: can show raw text)
-          # For CLI, we just show a simple indicator that AI is working
-          printf "\r${CYAN}  ⣾${NC} AI analyzing..."
+          # Real-time AI typing - show the streaming text
+          local text=$(echo "$data" | jq -r '.text // ""' 2>/dev/null)
+          if [[ -n "$text" ]]; then
+            # Print text without newline for streaming effect
+            printf "%s" "$text"
+          fi
           ;;
 
         "diagnostic")
-          # Clear the spinner line and show issue
-          printf "\r%50s\r" ""  # Clear spinner line
+          # Clear the text/spinner line and show issue on new line
+          printf "\n"  # New line after streaming text
 
           # Show issue as it's found and collect it
           local severity=$(echo "$data" | jq -r '.severity // "INFO"' 2>/dev/null)
@@ -336,8 +339,8 @@ call_ai_gateway() {
           ;;
 
         "complete")
-          # Clear spinner if still showing
-          printf "\r%50s\r" ""
+          # New line after any streaming text
+          printf "\n"
 
           # Final summary - show overview and save result
           local overview=$(echo "$data" | jq -r '.overview // ""' 2>/dev/null)
@@ -369,8 +372,8 @@ call_ai_gateway() {
           ;;
 
         "error")
-          # Clear spinner and show error
-          printf "\r%50s\r" ""
+          # New line after streaming text and show error
+          printf "\n"
           local error_msg=$(echo "$data" | jq -r '.message // .error // "Unknown error"' 2>/dev/null)
           log_error "AI review error: $error_msg"
           ;;
