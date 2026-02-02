@@ -263,7 +263,10 @@ call_ai_gateway() {
   if [[ "$http_status" != "200" ]]; then
     log_error "API request failed (HTTP $http_status)"
     echo "$api_body" | head -5
-    exit 0  # Don't block commit on API failure
+    echo ""
+    log_error "Commit blocked - AI review service unavailable"
+    echo "        Use 'git commit --no-verify' to bypass"
+    exit 1
   fi
 
   REVIEW_JSON="$api_body"

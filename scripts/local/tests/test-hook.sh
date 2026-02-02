@@ -331,7 +331,7 @@ test_hook_with_warning_response() {
 
   assert_exit_code "0" "$exit_code" "hook returns exit code 0 on WARNING"
   assert_contains "$output" "Commit allowed" "shows commit allowed"
-  assert_contains "$output" "WARNING" "shows WARNING severity"
+  assert_contains "$output" "WARN" "shows WARNING severity"
 
   git reset HEAD test2.js --quiet
   rm -f test2.js
@@ -366,7 +366,7 @@ test_hook_with_no_issues() {
 }
 
 test_hook_api_failure() {
-  print_test "Hook allows commit on API failure"
+  print_test "Hook blocks commit on API failure"
 
   # Use non-existent server
   setup_config "http://127.0.0.1:19999"
@@ -379,8 +379,8 @@ test_hook_api_failure() {
   local output
   output=$("$TEST_CONFIG_DIR/hooks/pre-commit.sh" 2>&1) || exit_code=$?
 
-  # Should not block commit on API failure
-  assert_exit_code "0" "$exit_code" "hook does not block on API failure"
+  # Should block commit on API failure (strict mode)
+  assert_exit_code "1" "$exit_code" "hook blocks on API failure"
 
   git reset HEAD test4.js --quiet
   rm -f test4.js
