@@ -72,42 +72,65 @@ cmd_setup() {
   # Create config directory if needed
   mkdir -p "$CONFIG_DIR"
 
-  # Check if config exists
+  # Load existing values if config exists
+  local OLD_URL="" OLD_KEY="" OLD_MODEL="" OLD_PROVIDER=""
   if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE" 2>/dev/null || true
+    OLD_URL="$AI_GATEWAY_URL"
+    OLD_KEY="$AI_GATEWAY_API_KEY"
+    OLD_MODEL="$AI_MODEL"
+    OLD_PROVIDER="$AI_PROVIDER"
+
     log_warn "Configuration already exists"
     read -p "Do you want to overwrite it? [y/N]: " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
       echo "Setup cancelled"
       exit 0
     fi
+    echo ""
+    log_info "Press Enter to keep existing value"
   fi
 
   echo "Please provide your AI Gateway credentials:"
   echo ""
 
   # AI Gateway URL
-  read -p "Enter AI Gateway URL: " AI_GATEWAY_URL
-  while [[ -z "$AI_GATEWAY_URL" ]]; do
-    log_error "URL is required"
+  if [[ -n "$OLD_URL" ]]; then
+    read -p "Enter AI Gateway URL [$OLD_URL]: " AI_GATEWAY_URL
+    AI_GATEWAY_URL="${AI_GATEWAY_URL:-$OLD_URL}"
+  else
     read -p "Enter AI Gateway URL: " AI_GATEWAY_URL
-  done
+    while [[ -z "$AI_GATEWAY_URL" ]]; do
+      log_error "URL is required"
+      read -p "Enter AI Gateway URL: " AI_GATEWAY_URL
+    done
+  fi
 
   # AI Gateway API Key
-  read -sp "Enter AI Gateway API Key: " AI_GATEWAY_API_KEY
-  echo ""
-  while [[ -z "$AI_GATEWAY_API_KEY" ]]; do
-    log_error "API Key is required"
+  if [[ -n "$OLD_KEY" ]]; then
+    local masked_key="${OLD_KEY:0:4}****${OLD_KEY: -4}"
+    read -sp "Enter AI Gateway API Key [$masked_key]: " AI_GATEWAY_API_KEY
+    echo ""
+    AI_GATEWAY_API_KEY="${AI_GATEWAY_API_KEY:-$OLD_KEY}"
+  else
     read -sp "Enter AI Gateway API Key: " AI_GATEWAY_API_KEY
     echo ""
-  done
+    while [[ -z "$AI_GATEWAY_API_KEY" ]]; do
+      log_error "API Key is required"
+      read -sp "Enter AI Gateway API Key: " AI_GATEWAY_API_KEY
+      echo ""
+    done
+  fi
 
   # AI Model (optional)
-  read -p "Enter AI Model [gemini-2.0-flash]: " AI_MODEL
-  AI_MODEL="${AI_MODEL:-gemini-2.0-flash}"
+  local default_model="${OLD_MODEL:-gemini-2.0-flash}"
+  read -p "Enter AI Model [$default_model]: " AI_MODEL
+  AI_MODEL="${AI_MODEL:-$default_model}"
 
   # AI Provider (optional)
-  read -p "Enter AI Provider [google]: " AI_PROVIDER
-  AI_PROVIDER="${AI_PROVIDER:-google}"
+  local default_provider="${OLD_PROVIDER:-google}"
+  read -p "Enter AI Provider [$default_provider]: " AI_PROVIDER
+  AI_PROVIDER="${AI_PROVIDER:-$default_provider}"
 
   # Save config
   cat > "$CONFIG_FILE" << EOF
@@ -358,6 +381,61 @@ cmd_status() {
   fi
 }
 
+cmd_diff() {
+  check_git_repo
+
+  local show_cached=true
+  local show_path=true
+
+  # Parse options
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --all|-a)
+        show_cached=false
+        ;;
+      --no-path)
+        show_path=false
+        ;;
+      *)
+        ;;
+    esac
+    shift
+  done
+
+  local SHOWLINENUM="$HOOKS_DIR/showlinenum.awk"
+
+  # Check if showlinenum.awk exists
+  if [[ ! -f "$SHOWLINENUM" ]]; then
+    log_warn "showlinenum.awk not found, downloading..."
+    local REPO_URL="https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main"
+    curl -sSL "$REPO_URL/scripts/showlinenum.awk" -o "$SHOWLINENUM"
+    chmod +x "$SHOWLINENUM"
+  fi
+
+  # Get diff with line numbers
+  local diff_opts=""
+  if [[ "$show_cached" == true ]]; then
+    diff_opts="--cached"
+  fi
+
+  local awk_opts="show_header=0"
+  if [[ "$show_path" == true ]]; then
+    awk_opts="$awk_opts show_path=1"
+  fi
+
+  # Requires gawk (GNU awk) for gensub() function
+  if ! command -v gawk &>/dev/null; then
+    log_error "gawk (GNU awk) is required but not found"
+    echo ""
+    echo "Install gawk:"
+    echo "  macOS:  brew install gawk"
+    echo "  Ubuntu: sudo apt-get install gawk"
+    exit 1
+  fi
+
+  git diff --color=always $diff_opts | gawk -f "$SHOWLINENUM" $awk_opts
+}
+
 cmd_update() {
   log_info "Updating AI Review..."
 
@@ -389,6 +467,17 @@ cmd_update() {
     exit 1
   fi
 
+  # Update showlinenum.awk
+  echo "Downloading showlinenum.awk..."
+  if curl -sSL "$REPO_URL/scripts/showlinenum.awk" -o "$HOOKS_DIR/showlinenum.awk.new"; then
+    mv "$HOOKS_DIR/showlinenum.awk.new" "$HOOKS_DIR/showlinenum.awk"
+    chmod +x "$HOOKS_DIR/showlinenum.awk"
+    log_success "showlinenum.awk updated"
+  else
+    log_warn "Failed to download showlinenum.awk (optional)"
+    rm -f "$HOOKS_DIR/showlinenum.awk.new"
+  fi
+
   echo ""
   log_success "Update complete!"
   echo "New version: $(ai-review --version 2>/dev/null || echo 'unknown')"
@@ -409,6 +498,10 @@ ${YELLOW}COMMANDS:${NC}
                   - ai-review config           Show current config
                   - ai-review config set K V   Set a config value
                   - ai-review config edit      Open config in editor
+    diff          Show staged diff with line numbers
+                  - ai-review diff             Show staged changes
+                  - ai-review diff --all       Show all changes (not just staged)
+                  - ai-review diff --no-path   Hide file paths
     status        Show installation and configuration status
     update        Update AI Review to the latest version
     help          Show this help message
@@ -459,6 +552,9 @@ main() {
       ;;
     update)
       cmd_update "$@"
+      ;;
+    diff)
+      cmd_diff "$@"
       ;;
     help|--help|-h)
       cmd_help

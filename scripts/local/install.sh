@@ -138,14 +138,21 @@ install_scripts() {
     # Copy from local source
     cp "$SCRIPT_DIR/ai-review" "$BIN_DIR/ai-review"
     cp "$SCRIPT_DIR/pre-commit.sh" "$HOOKS_DIR/pre-commit.sh"
+    # Copy showlinenum.awk from parent scripts directory
+    local SHOWLINENUM_SRC="$(dirname "$SCRIPT_DIR")/showlinenum.awk"
+    if [[ -f "$SHOWLINENUM_SRC" ]]; then
+      cp "$SHOWLINENUM_SRC" "$HOOKS_DIR/showlinenum.awk"
+    fi
   else
     # Download from remote
     curl -sSL "$REPO_URL/scripts/local/ai-review" -o "$BIN_DIR/ai-review"
     curl -sSL "$REPO_URL/scripts/local/pre-commit.sh" -o "$HOOKS_DIR/pre-commit.sh"
+    curl -sSL "$REPO_URL/scripts/showlinenum.awk" -o "$HOOKS_DIR/showlinenum.awk" 2>/dev/null || true
   fi
 
   chmod +x "$BIN_DIR/ai-review"
   chmod +x "$HOOKS_DIR/pre-commit.sh"
+  [[ -f "$HOOKS_DIR/showlinenum.awk" ]] && chmod +x "$HOOKS_DIR/showlinenum.awk"
 
   log_success "Installed ai-review CLI to $BIN_DIR/ai-review"
   log_success "Installed hook template to $HOOKS_DIR/pre-commit.sh"
