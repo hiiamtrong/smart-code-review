@@ -172,6 +172,124 @@ bash scripts/detect-language.sh
 bash scripts/ai-review.sh
 ```
 
+## 🖥️ Local Installation (Git Hook)
+
+You can install AI Review as a git pre-commit hook to automatically review code before each commit.
+
+### Installation
+
+**macOS / Linux / WSL:**
+```bash
+# Option 1: Run installer directly from repo
+git clone https://github.com/hiiamtrong/smart-code-review.git
+cd smart-code-review
+bash scripts/local/install.sh
+
+# Option 2: One-line install (when published)
+curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+# Option 1: Run installer directly from repo
+git clone https://github.com/hiiamtrong/smart-code-review.git
+cd smart-code-review
+powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
+
+# Option 2: One-line install (when published)
+irm https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.ps1 | iex
+```
+
+The installer will:
+1. Install required dependencies (jq)
+2. Prompt for your AI Gateway credentials
+3. Set up the CLI tool and hook scripts
+4. Add `~/.local/bin` to your PATH
+
+### Enable Hook in a Repository
+
+After installation, navigate to any git repository and run:
+
+```bash
+ai-review install
+```
+
+This installs the pre-commit hook that will review your staged changes before each commit.
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `ai-review install` | Install hook in current repository |
+| `ai-review uninstall` | Remove hook from current repository |
+| `ai-review config` | View current configuration |
+| `ai-review config set KEY VALUE` | Update a config value |
+| `ai-review config edit` | Open config in editor |
+| `ai-review status` | Check installation status |
+| `ai-review update` | Update to latest version |
+| `ai-review help` | Show help message |
+
+### How It Works
+
+When you run `git commit`, the hook will:
+
+1. Get your staged changes (`git diff --cached`)
+2. Filter out files matching `.aireviewignore` patterns
+3. Send the diff to your AI Gateway for review
+4. Display results with severity levels:
+   - **ERROR**: Blocks the commit (fix required)
+   - **WARNING**: Allows commit but shows warnings
+   - **INFO**: Informational suggestions
+
+### Example Output
+
+```
+🔍 AI Review analyzing your changes...
+📊 Reviewing 45 lines of changes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ ERROR: SQL Injection vulnerability detected
+   src/utils/db.js:42
+
+⚠️  WARNING: Missing error handling
+   src/api/handler.js:87
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Summary: 1 errors, 1 warnings, 0 info
+
+🚫 Commit blocked - please fix ERROR issues first
+   Use git commit --no-verify to bypass (not recommended)
+```
+
+### Bypassing the Hook
+
+To skip AI review for a single commit:
+
+```bash
+git commit --no-verify -m "your message"
+```
+
+### Configuration
+
+Config is stored at `~/.config/ai-review/config`:
+
+```bash
+AI_GATEWAY_URL="https://your-gateway.com/api"
+AI_GATEWAY_API_KEY="your-api-key"
+AI_MODEL="gemini-2.0-flash"
+AI_PROVIDER="google"
+```
+
+### Uninstalling
+
+```bash
+# Remove from current repository
+ai-review uninstall
+
+# Remove completely (delete config and CLI)
+rm -rf ~/.config/ai-review ~/.local/bin/ai-review
+```
+
 ## 📖 AI Gateway Integration
 
 This action expects your AI Gateway to:
