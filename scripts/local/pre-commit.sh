@@ -257,8 +257,8 @@ call_ai_gateway() {
   log_info "AI is reviewing your code..."
   echo ""
 
-  # Initialize diagnostics array
-  echo "[]" > "$diagnostics_file"
+  # Initialize diagnostics file (JSONL format for efficient appending)
+  : > "$diagnostics_file"
 
   # Make streaming API request with SSE
   curl -sN "$AI_GATEWAY_URL/review" \
@@ -295,16 +295,31 @@ call_ai_gateway() {
           # Show progress info
           local event_type=$(echo "$data" | jq -r '.type // ""' 2>/dev/null)
           local total_chunks=$(echo "$data" | jq -r '.total_chunks // 0' 2>/dev/null)
+          local chunk_num=$(echo "$data" | jq -r '.chunk // 0' 2>/dev/null)
 
-          if [[ "$event_type" == "start" ]]; then
-            echo -e "${CYAN}  ▸${NC} Analyzing $total_chunks file(s)..."
-          elif [[ "$event_type" == "chunk" ]]; then
-            local chunk_num=$(echo "$data" | jq -r '.chunk // 0' 2>/dev/null)
-            echo -e "${CYAN}  ▸${NC} Processing chunk $chunk_num/$total_chunks..."
-          fi
+          case "$event_type" in
+            "start")
+              echo -e "${CYAN}  ▸${NC} Analyzing $total_chunks chunk(s)..."
+              ;;
+            "chunk_start")
+              echo -e "${CYAN}  ▸${NC} Processing chunk $chunk_num/$total_chunks..."
+              ;;
+            "chunk_complete")
+              echo -e "${CYAN}  ▸${NC} Chunk $chunk_num complete"
+              ;;
+          esac
+          ;;
+
+        "text")
+          # Real-time AI typing - show spinner (optional: can show raw text)
+          # For CLI, we just show a simple indicator that AI is working
+          printf "\r${CYAN}  ⣾${NC} AI analyzing..."
           ;;
 
         "diagnostic")
+          # Clear the spinner line and show issue
+          printf "\r%50s\r" ""  # Clear spinner line
+
           # Show issue as it's found and collect it
           local severity=$(echo "$data" | jq -r '.severity // "INFO"' 2>/dev/null)
           local message=$(echo "$data" | jq -r '.message // ""' 2>/dev/null)
@@ -315,13 +330,15 @@ call_ai_gateway() {
             print_issue "$severity" "$file" "$line_num" "$message"
             echo ""
 
-            # Append to diagnostics collection
-            local current_diags=$(cat "$diagnostics_file")
-            echo "$current_diags" | jq --argjson new "$data" '. + [$new]' > "$diagnostics_file"
+            # Append diagnostic to JSONL file (more efficient than re-parsing)
+            echo "$data" >> "$diagnostics_file"
           fi
           ;;
 
         "complete")
+          # Clear spinner if still showing
+          printf "\r%50s\r" ""
+
           # Final summary - show overview and save result
           local overview=$(echo "$data" | jq -r '.overview // ""' 2>/dev/null)
           local total=$(echo "$data" | jq -r '.total_diagnostics // 0' 2>/dev/null)
@@ -333,8 +350,12 @@ call_ai_gateway() {
             echo "$overview"
           fi
 
-          # Build final result JSON
-          local diags=$(cat "$diagnostics_file")
+          # Convert JSONL to array and build final result
+          local diags="[]"
+          if [[ -s "$diagnostics_file" ]]; then
+            diags=$(jq -s '.' "$diagnostics_file" 2>/dev/null || echo "[]")
+          fi
+
           jq -n \
             --argjson diagnostics "$diags" \
             --arg overview "$overview" \
@@ -345,6 +366,13 @@ call_ai_gateway() {
               "overview": $overview,
               "max_severity": $severity
             }' > "$result_file"
+          ;;
+
+        "error")
+          # Clear spinner and show error
+          printf "\r%50s\r" ""
+          local error_msg=$(echo "$data" | jq -r '.message // .error // "Unknown error"' 2>/dev/null)
+          log_error "AI review error: $error_msg"
           ;;
 
         *)

@@ -184,8 +184,17 @@ create_sse_response() {
 event: progress
 data: {"type":"start","total_chunks":1}
 
+event: progress
+data: {"type":"chunk_start","chunk":1,"total_chunks":1}
+
+event: text
+data: {"chunk":1,"text":"analyzing..."}
+
 event: diagnostic
 data: {"severity":"$severity","message":"$message","location":{"path":"test.js","range":{"start":{"line":1,"column":1},"end":{"line":1,"column":10}}},"code":{"value":"test-issue","url":""}}
+
+event: progress
+data: {"type":"chunk_complete","chunk":1}
 
 event: complete
 data: {"overview":"Review completed","total_diagnostics":1,"severity":"$severity"}
