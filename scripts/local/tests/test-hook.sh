@@ -175,6 +175,73 @@ stop_mock_server() {
   fi
 }
 
+# Create SSE mock response file
+create_sse_response() {
+  local severity="$1"
+  local message="$2"
+
+  cat > "$TEST_DIR/sse_response.txt" << EOF
+event: progress
+data: {"type":"start","total_chunks":1}
+
+event: diagnostic
+data: {"severity":"$severity","message":"$message","location":{"path":"test.js","range":{"start":{"line":1,"column":1},"end":{"line":1,"column":10}}},"code":{"value":"test-issue","url":""}}
+
+event: complete
+data: {"overview":"Review completed","total_diagnostics":1,"severity":"$severity"}
+
+EOF
+}
+
+# Start SSE mock server
+start_sse_mock_server() {
+  local port="$1"
+
+  if command -v python3 &> /dev/null; then
+    cat > "$TEST_DIR/sse_mock_server.py" << 'PYEOF'
+import http.server
+import sys
+import time
+
+PORT = int(sys.argv[1])
+RESPONSE_FILE = sys.argv[2]
+
+class SSEHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
+
+    def do_POST(self):
+        with open(RESPONSE_FILE, 'r') as f:
+            response = f.read()
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'keep-alive')
+        self.end_headers()
+
+        # Send SSE events with small delays to simulate streaming
+        for line in response.split('\n'):
+            self.wfile.write((line + '\n').encode())
+            self.wfile.flush()
+            if line.startswith('data:'):
+                time.sleep(0.1)
+
+if __name__ == '__main__':
+    server = http.server.HTTPServer(('127.0.0.1', PORT), SSEHandler)
+    server.handle_request()  # Handle one request then exit
+PYEOF
+
+    python3 "$TEST_DIR/sse_mock_server.py" "$port" "$TEST_DIR/sse_response.txt" &
+    MOCK_SERVER_PID=$!
+    sleep 0.5
+    return 0
+  fi
+
+  echo "Python3 not found, skipping SSE mock server tests"
+  return 1
+}
+
 # ============================================
 # Setup
 # ============================================
@@ -416,6 +483,62 @@ test_hook_aireviewignore() {
   stop_mock_server
 }
 
+test_hook_sse_streaming() {
+  print_test "Hook handles SSE streaming response"
+
+  if ! start_sse_mock_server 19880; then
+    echo -e "${YELLOW}Skipping (no Python3)${NC}"
+    return
+  fi
+
+  create_sse_response "WARNING" "Consider adding error handling"
+  setup_config "http://127.0.0.1:19880"
+
+  cd "$TEST_REPO_DIR"
+  echo "const sse = 1;" > test_sse.js
+  git add test_sse.js
+
+  local exit_code=0
+  local output
+  output=$("$TEST_CONFIG_DIR/hooks/pre-commit.sh" 2>&1) || exit_code=$?
+
+  assert_exit_code "0" "$exit_code" "hook returns exit code 0 on streamed WARNING"
+  assert_contains "$output" "Analyzing" "shows streaming progress"
+  assert_contains "$output" "WARN" "shows streamed warning"
+
+  git reset HEAD test_sse.js --quiet
+  rm -f test_sse.js
+  stop_mock_server
+}
+
+test_hook_sse_streaming_error() {
+  print_test "Hook blocks on SSE streaming ERROR"
+
+  if ! start_sse_mock_server 19881; then
+    echo -e "${YELLOW}Skipping (no Python3)${NC}"
+    return
+  fi
+
+  create_sse_response "ERROR" "Security vulnerability detected"
+  setup_config "http://127.0.0.1:19881"
+
+  cd "$TEST_REPO_DIR"
+  echo "const sse_err = 1;" > test_sse_err.js
+  git add test_sse_err.js
+
+  local exit_code=0
+  local output
+  output=$("$TEST_CONFIG_DIR/hooks/pre-commit.sh" 2>&1) || exit_code=$?
+
+  assert_exit_code "1" "$exit_code" "hook returns exit code 1 on streamed ERROR"
+  assert_contains "$output" "ERROR" "shows streamed error"
+  assert_contains "$output" "blocked" "shows blocked message"
+
+  git reset HEAD test_sse_err.js --quiet
+  rm -f test_sse_err.js
+  stop_mock_server
+}
+
 # ============================================
 # Run All Tests
 # ============================================
@@ -439,6 +562,8 @@ run_all_tests() {
   test_hook_with_no_issues
   test_hook_api_failure
   test_hook_aireviewignore
+  test_hook_sse_streaming
+  test_hook_sse_streaming_error
 
   # Print summary
   echo ""
