@@ -250,6 +250,7 @@ call_ai_gateway() {
   # Temp files for processing
   local result_file=$(mktemp)
   local diagnostics_file=$(mktemp)
+  local text_buffer_file=$(mktemp)
   local current_event=""
 
   echo ""
@@ -257,8 +258,9 @@ call_ai_gateway() {
   log_info "AI is reviewing your code..."
   echo ""
 
-  # Initialize diagnostics file (JSONL format for efficient appending)
+  # Initialize files
   : > "$diagnostics_file"
+  : > "$text_buffer_file"
 
   # Make streaming API request with SSE
   curl -sN "$AI_GATEWAY_URL/review" \
@@ -305,23 +307,57 @@ call_ai_gateway() {
               echo -e "${CYAN}  ▸${NC} Processing chunk $chunk_num/$total_chunks..."
               ;;
             "chunk_complete")
+              # Clear spinner and show completion
+              printf "\r%50s\r" ""
               echo -e "${CYAN}  ▸${NC} Chunk $chunk_num complete"
+
+              # Parse accumulated JSON if no diagnostics were received from diagnostic events
+              if [[ ! -s "$diagnostics_file" ]] && [[ -s "$text_buffer_file" ]]; then
+                local accumulated_json=$(cat "$text_buffer_file")
+                if echo "$accumulated_json" | jq empty 2>/dev/null; then
+                  # Extract diagnostics from accumulated JSON
+                  echo "$accumulated_json" | jq -c '.diagnostics[]?' 2>/dev/null | while read -r diag; do
+                    if [[ -n "$diag" ]]; then
+                      local sev=$(echo "$diag" | jq -r '.severity // "INFO"')
+                      local msg=$(echo "$diag" | jq -r '.message // ""')
+                      local f=$(echo "$diag" | jq -r '.location.path // "unknown"')
+                      local ln=$(echo "$diag" | jq -r '.location.range.start.line // 0')
+                      print_issue "$sev" "$f" "$ln" "$msg"
+                      echo ""
+                      echo "$diag" >> "$diagnostics_file"
+                    fi
+                  done
+                  # Extract overview if available
+                  local text_overview=$(echo "$accumulated_json" | jq -r '.overview // ""' 2>/dev/null)
+                  if [[ -n "$text_overview" ]]; then
+                    echo ""
+                    echo -e "${BOLD}Overview:${NC}"
+                    echo "$text_overview"
+                  fi
+                fi
+              fi
+              # Clear buffer for next chunk
+              : > "$text_buffer_file"
               ;;
           esac
           ;;
 
         "text")
-          # Real-time AI typing - show the streaming text
+          # Accumulate JSON text fragments
           local text=$(echo "$data" | jq -r '.text // ""' 2>/dev/null)
           if [[ -n "$text" ]]; then
-            # Print text without newline for streaming effect
-            printf "%s" "$text"
+            # Append to text buffer
+            printf "%s" "$text" >> "$text_buffer_file"
+            # Show spinner for visual feedback
+            local spinners=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+            local spinner_idx=$((RANDOM % 10))
+            printf "\r${CYAN}  ${spinners[$spinner_idx]}${NC} AI analyzing..."
           fi
           ;;
 
         "diagnostic")
-          # Clear the text/spinner line and show issue on new line
-          printf "\n"  # New line after streaming text
+          # Clear the spinner line and show issue
+          printf "\r%50s\r" ""  # Clear spinner line
 
           # Show issue as it's found and collect it
           local severity=$(echo "$data" | jq -r '.severity // "INFO"' 2>/dev/null)
@@ -339,8 +375,8 @@ call_ai_gateway() {
           ;;
 
         "complete")
-          # New line after any streaming text
-          printf "\n"
+          # Clear spinner line
+          printf "\r%50s\r" ""
 
           # Final summary - show overview and save result
           local overview=$(echo "$data" | jq -r '.overview // ""' 2>/dev/null)
@@ -372,8 +408,8 @@ call_ai_gateway() {
           ;;
 
         "error")
-          # New line after streaming text and show error
-          printf "\n"
+          # Clear spinner line and show error
+          printf "\r%50s\r" ""
           local error_msg=$(echo "$data" | jq -r '.message // .error // "Unknown error"' 2>/dev/null)
           log_error "AI review error: $error_msg"
           ;;
@@ -388,9 +424,10 @@ call_ai_gateway() {
     fi
   done
 
-  # Cleanup diff file
+  # Cleanup temp files
   rm -f "$diff_file"
   rm -f "$diagnostics_file"
+  rm -f "$text_buffer_file"
 
   # Check if we got a result
   if [[ -s "$result_file" ]]; then
