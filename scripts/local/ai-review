@@ -2,7 +2,7 @@
 set -e
 
 # AI Review CLI Tool
-VERSION="1.0.5"
+VERSION="1.0.6"
 
 # Colors for output
 RED='\033[0;31m'
@@ -58,7 +58,36 @@ check_config_exists() {
 }
 
 get_git_hooks_dir() {
+  local repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
+
+  # Check for husky (v5+)
+  if [[ -d "$repo_root/.husky" ]]; then
+    echo "$repo_root/.husky"
+    return
+  fi
+
+  # Check for custom hooksPath
+  local custom_path=$(git config core.hooksPath 2>/dev/null)
+  if [[ -n "$custom_path" ]]; then
+    # Resolve relative path
+    if [[ "$custom_path" != /* ]]; then
+      custom_path="$repo_root/$custom_path"
+    fi
+    echo "$custom_path"
+    return
+  fi
+
+  # Default: .git/hooks
   git rev-parse --git-dir 2>/dev/null | xargs -I {} echo "{}/hooks"
+}
+
+get_hook_type() {
+  local hooks_dir="$1"
+  if [[ "$hooks_dir" == *".husky"* ]]; then
+    echo "husky"
+  else
+    echo "git"
+  fi
 }
 
 # ============================================
@@ -159,12 +188,80 @@ cmd_install() {
 
   local hooks_dir=$(get_git_hooks_dir)
   local target_hook="$hooks_dir/pre-commit"
+  local hook_type=$(get_hook_type "$hooks_dir")
   local original_hook="$hooks_dir/pre-commit.original"
 
   log_info "Installing AI Review hook..."
+  log_info "Detected hook type: $hook_type"
 
   # Create hooks directory if needed
   mkdir -p "$hooks_dir"
+
+  # Handle based on hook type
+  if [[ "$hook_type" == "husky" ]]; then
+    install_husky_hook "$target_hook"
+  else
+    install_git_hook "$target_hook" "$original_hook"
+  fi
+
+  chmod +x "$target_hook"
+
+  log_success "AI Review hook installed"
+  echo ""
+  echo "The hook will now run on every commit."
+  echo "To bypass: git commit --no-verify"
+}
+
+# Install hook for husky-based projects
+install_husky_hook() {
+  local target_hook="$1"
+
+  # Check if already installed
+  if [[ -f "$target_hook" ]] && grep -q "$HOOK_MARKER" "$target_hook" 2>/dev/null; then
+    log_warn "AI Review hook is already installed"
+    read -p "Do you want to reinstall? [y/N]: " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+      echo "Aborted"
+      exit 0
+    fi
+    # Remove our marker and AI review line, keep the rest
+    local temp_file=$(mktemp)
+    grep -v "$HOOK_MARKER" "$target_hook" | grep -v "$HOOK_SCRIPT" > "$temp_file"
+    mv "$temp_file" "$target_hook"
+  fi
+
+  # For husky, append our call to existing hook
+  if [[ -f "$target_hook" ]]; then
+    # Read existing content
+    local existing_content=$(cat "$target_hook")
+
+    # Backup existing hook
+    cp "$target_hook" "$target_hook.backup"
+    log_info "Backed up existing hook"
+
+    # Append AI review to existing hook
+    cat > "$target_hook" << EOF
+$existing_content
+
+$HOOK_MARKER
+# AI Review - run after other hooks
+"$HOOK_SCRIPT" "\$@"
+EOF
+    log_info "Added AI Review to existing husky hook"
+  else
+    # No existing hook - create new one
+    cat > "$target_hook" << EOF
+$HOOK_MARKER
+# AI Review pre-commit hook
+"$HOOK_SCRIPT" "\$@"
+EOF
+  fi
+}
+
+# Install hook for standard git hooks
+install_git_hook() {
+  local target_hook="$1"
+  local original_hook="$2"
 
   # Check if hook already exists
   if [[ -f "$target_hook" ]]; then
@@ -243,13 +340,6 @@ $HOOK_MARKER
 exec "$HOOK_SCRIPT" "\$@"
 EOF
   fi
-
-  chmod +x "$target_hook"
-
-  log_success "AI Review hook installed"
-  echo ""
-  echo "The hook will now run on every commit."
-  echo "To bypass: git commit --no-verify"
 }
 
 cmd_uninstall() {
@@ -257,6 +347,7 @@ cmd_uninstall() {
 
   local hooks_dir=$(get_git_hooks_dir)
   local target_hook="$hooks_dir/pre-commit"
+  local hook_type=$(get_hook_type "$hooks_dir")
   local original_hook="$hooks_dir/pre-commit.original"
 
   log_info "Uninstalling AI Review hook..."
@@ -273,19 +364,31 @@ cmd_uninstall() {
     exit 1
   fi
 
-  rm "$target_hook"
-  log_success "AI Review hook removed"
+  if [[ "$hook_type" == "husky" ]]; then
+    # For husky, just remove our lines from the hook
+    local temp_file=$(mktemp)
+    grep -v "$HOOK_MARKER" "$target_hook" | grep -v "$HOOK_SCRIPT" > "$temp_file"
+    # Remove empty lines at end
+    sed -i '' -e :a -e '/^\s*$/d;N;ba' "$temp_file" 2>/dev/null || sed -i -e :a -e '/^\s*$/d;N;ba' "$temp_file" 2>/dev/null || true
+    mv "$temp_file" "$target_hook"
+    chmod +x "$target_hook"
+    log_success "AI Review removed from husky hook"
+  else
+    # For git hooks, remove the file
+    rm "$target_hook"
+    log_success "AI Review hook removed"
 
-  # Restore original hook if exists (from chain mode)
-  if [[ -f "$original_hook" ]]; then
-    mv "$original_hook" "$target_hook"
-    log_success "Original pre-commit hook restored"
-  # Or restore backup if exists (from replace mode)
-  elif [[ -f "$target_hook.backup" ]]; then
-    read -p "Restore previous hook from backup? [y/N]: " confirm
-    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-      mv "$target_hook.backup" "$target_hook"
-      log_success "Previous hook restored from backup"
+    # Restore original hook if exists (from chain mode)
+    if [[ -f "$original_hook" ]]; then
+      mv "$original_hook" "$target_hook"
+      log_success "Original pre-commit hook restored"
+    # Or restore backup if exists (from replace mode)
+    elif [[ -f "$target_hook.backup" ]]; then
+      read -p "Restore previous hook from backup? [y/N]: " confirm
+      if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+        mv "$target_hook.backup" "$target_hook"
+        log_success "Previous hook restored from backup"
+      fi
     fi
   fi
 }
