@@ -93,11 +93,20 @@ load_config() {
 # ============================================
 
 get_staged_diff() {
-  DIFF=$(git diff --cached)
+  local raw_diff=$(git diff --cached)
 
-  if [[ -z "$DIFF" ]]; then
+  if [[ -z "$raw_diff" ]]; then
     log_success "No staged changes to review"
     exit 0
+  fi
+
+  # Try to add line numbers using showlinenum.awk if gawk is available
+  local showlinenum="$CONFIG_DIR/hooks/showlinenum.awk"
+  if command -v gawk &>/dev/null && [[ -f "$showlinenum" ]]; then
+    DIFF=$(echo "$raw_diff" | gawk -f "$showlinenum" show_header=0 show_path=1)
+  else
+    # Fallback to raw diff without line numbers
+    DIFF="$raw_diff"
   fi
 
   DIFF_LINES=$(echo "$DIFF" | wc -l)
