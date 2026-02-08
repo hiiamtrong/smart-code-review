@@ -8,6 +8,7 @@ This GitHub Action automatically detects your project's language/framework and c
 
 - **🔍 Language Detection**: Automatically detects project type based on configuration files
 - **🤖 AI-Powered Review**: Intelligent code analysis using configurable AI models
+- **📊 SonarQube Integration**: Combine static analysis with AI review ([Setup Guide](SONARQUBE_INTEGRATION.md))
 - **🛠️ Traditional Linting**: Integrates with popular linters for each language
 - **📝 Smart Diff Analysis**: Reviews only changes in PRs or since last push
 - **💬 Inline Comments**: Posts review comments directly on PR lines
@@ -209,6 +210,33 @@ The installer will:
 **Optional:** For `ai-review diff` command, install gawk:
 - macOS: `brew install gawk`
 - Ubuntu: `sudo apt-get install gawk`
+
+### Optional: Enable SonarQube in Local Hooks
+
+By default, local pre-commit hooks run **AI review only** (fast, 2-10 seconds).
+
+To optionally enable SonarQube locally (slower, 30-60 seconds):
+
+```bash
+# Enable SonarQube in pre-commit hooks
+bash scripts/local/enable-local-sonarqube.sh
+
+# Follow prompts to enter:
+# - SonarQube URL: https://sonarqube.sotatek.works
+# - SonarQube Token: (from dashboard)
+```
+
+**Configuration:**
+```bash
+# View current config
+ai-review config
+
+# Disable SonarQube locally (back to fast mode)
+ai-review config set ENABLE_SONARQUBE_LOCAL false
+
+# Or run the script again and choose "Disable"
+bash scripts/local/enable-local-sonarqube.sh
+```
 
 ### Enable Hook in a Repository
 
