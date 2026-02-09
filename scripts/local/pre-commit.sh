@@ -733,6 +733,8 @@ main() {
   load_config
 
   echo ""
+  echo -e "${BOLD}AI Review${NC} v$(cat "$CONFIG_DIR/version" 2>/dev/null || echo "1.0") - Pre-commit code review"
+  echo ""
 
   # Check if SonarQube is enabled locally
   if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
