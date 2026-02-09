@@ -103,12 +103,17 @@ cmd_setup() {
 
   # Load existing values if config exists
   local OLD_URL="" OLD_KEY="" OLD_MODEL="" OLD_PROVIDER=""
+  local OLD_ENABLE_SONAR="" OLD_SONAR_URL="" OLD_SONAR_TOKEN="" OLD_SONAR_HOTSPOTS=""
   if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE" 2>/dev/null || true
     OLD_URL="$AI_GATEWAY_URL"
     OLD_KEY="$AI_GATEWAY_API_KEY"
     OLD_MODEL="$AI_MODEL"
     OLD_PROVIDER="$AI_PROVIDER"
+    OLD_ENABLE_SONAR="$ENABLE_SONARQUBE_LOCAL"
+    OLD_SONAR_URL="$SONAR_HOST_URL"
+    OLD_SONAR_TOKEN="$SONAR_TOKEN"
+    OLD_SONAR_HOTSPOTS="$SONAR_BLOCK_ON_HOTSPOTS"
 
     log_warn "Configuration already exists"
     read -p "Do you want to overwrite it? [y/N]: " confirm
@@ -120,46 +125,103 @@ cmd_setup() {
     log_info "Press Enter to keep existing value"
   fi
 
-  echo "Please provide your AI Gateway credentials:"
+  # --- AI Gateway ---
+  echo -e "${BOLD}AI Gateway Configuration:${NC}"
   echo ""
 
   # AI Gateway URL
   if [[ -n "$OLD_URL" ]]; then
-    read -p "Enter AI Gateway URL [$OLD_URL]: " AI_GATEWAY_URL
+    read -p "  AI Gateway URL [$OLD_URL]: " AI_GATEWAY_URL
     AI_GATEWAY_URL="${AI_GATEWAY_URL:-$OLD_URL}"
   else
-    read -p "Enter AI Gateway URL: " AI_GATEWAY_URL
+    read -p "  AI Gateway URL: " AI_GATEWAY_URL
     while [[ -z "$AI_GATEWAY_URL" ]]; do
       log_error "URL is required"
-      read -p "Enter AI Gateway URL: " AI_GATEWAY_URL
+      read -p "  AI Gateway URL: " AI_GATEWAY_URL
     done
   fi
 
   # AI Gateway API Key
   if [[ -n "$OLD_KEY" ]]; then
     local masked_key="${OLD_KEY:0:4}****${OLD_KEY: -4}"
-    read -sp "Enter AI Gateway API Key [$masked_key]: " AI_GATEWAY_API_KEY
+    read -sp "  AI Gateway API Key [$masked_key]: " AI_GATEWAY_API_KEY
     echo ""
     AI_GATEWAY_API_KEY="${AI_GATEWAY_API_KEY:-$OLD_KEY}"
   else
-    read -sp "Enter AI Gateway API Key: " AI_GATEWAY_API_KEY
+    read -sp "  AI Gateway API Key: " AI_GATEWAY_API_KEY
     echo ""
     while [[ -z "$AI_GATEWAY_API_KEY" ]]; do
       log_error "API Key is required"
-      read -sp "Enter AI Gateway API Key: " AI_GATEWAY_API_KEY
+      read -sp "  AI Gateway API Key: " AI_GATEWAY_API_KEY
       echo ""
     done
   fi
 
   # AI Model (optional)
   local default_model="${OLD_MODEL:-gemini-2.0-flash}"
-  read -p "Enter AI Model [$default_model]: " AI_MODEL
+  read -p "  AI Model [$default_model]: " AI_MODEL
   AI_MODEL="${AI_MODEL:-$default_model}"
 
   # AI Provider (optional)
   local default_provider="${OLD_PROVIDER:-google}"
-  read -p "Enter AI Provider [$default_provider]: " AI_PROVIDER
+  read -p "  AI Provider [$default_provider]: " AI_PROVIDER
   AI_PROVIDER="${AI_PROVIDER:-$default_provider}"
+
+  # --- SonarQube ---
+  echo ""
+  echo -e "${BOLD}SonarQube Configuration:${NC}"
+  echo ""
+
+  local default_enable="${OLD_ENABLE_SONAR:-false}"
+  if [[ "$default_enable" == "true" ]]; then
+    read -p "  Enable SonarQube for local commits? [Y/n]: " enable_sonar
+    enable_sonar="${enable_sonar:-y}"
+  else
+    read -p "  Enable SonarQube for local commits? [y/N]: " enable_sonar
+    enable_sonar="${enable_sonar:-n}"
+  fi
+
+  if [[ "$enable_sonar" == "y" || "$enable_sonar" == "Y" ]]; then
+    ENABLE_SONARQUBE_LOCAL="true"
+
+    # SonarQube Host URL
+    local default_sonar_url="${OLD_SONAR_URL:-https://sonarqube.sotatek.works}"
+    read -p "  SonarQube Host URL [$default_sonar_url]: " SONAR_HOST_URL
+    SONAR_HOST_URL="${SONAR_HOST_URL:-$default_sonar_url}"
+
+    # SonarQube Token
+    if [[ -n "$OLD_SONAR_TOKEN" ]]; then
+      local masked_token="${OLD_SONAR_TOKEN:0:4}****${OLD_SONAR_TOKEN: -4}"
+      read -sp "  SonarQube Token [$masked_token]: " SONAR_TOKEN
+      echo ""
+      SONAR_TOKEN="${SONAR_TOKEN:-$OLD_SONAR_TOKEN}"
+    else
+      read -sp "  SonarQube Token: " SONAR_TOKEN
+      echo ""
+      while [[ -z "$SONAR_TOKEN" ]]; do
+        log_error "Token is required when SonarQube is enabled"
+        read -sp "  SonarQube Token: " SONAR_TOKEN
+        echo ""
+      done
+    fi
+
+    # Block on hotspots
+    local default_hotspots="${OLD_SONAR_HOTSPOTS:-true}"
+    if [[ "$default_hotspots" == "true" ]]; then
+      read -p "  Block commits on Security Hotspots? [Y/n]: " block_hotspots
+      block_hotspots="${block_hotspots:-y}"
+    else
+      read -p "  Block commits on Security Hotspots? [y/N]: " block_hotspots
+      block_hotspots="${block_hotspots:-n}"
+    fi
+    if [[ "$block_hotspots" == "y" || "$block_hotspots" == "Y" ]]; then
+      SONAR_BLOCK_ON_HOTSPOTS="true"
+    else
+      SONAR_BLOCK_ON_HOTSPOTS="false"
+    fi
+  else
+    ENABLE_SONARQUBE_LOCAL="false"
+  fi
 
   # Save config
   cat > "$CONFIG_FILE" << EOF
@@ -170,7 +232,16 @@ AI_GATEWAY_URL="$AI_GATEWAY_URL"
 AI_GATEWAY_API_KEY="$AI_GATEWAY_API_KEY"
 AI_MODEL="$AI_MODEL"
 AI_PROVIDER="$AI_PROVIDER"
+ENABLE_SONARQUBE_LOCAL="$ENABLE_SONARQUBE_LOCAL"
 EOF
+
+  if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
+    cat >> "$CONFIG_FILE" << EOF
+SONAR_HOST_URL="$SONAR_HOST_URL"
+SONAR_TOKEN="$SONAR_TOKEN"
+SONAR_BLOCK_ON_HOTSPOTS="$SONAR_BLOCK_ON_HOTSPOTS"
+EOF
+  fi
 
   chmod 600 "$CONFIG_FILE"
 
@@ -578,10 +649,10 @@ cmd_config() {
         # Remove quotes from value
         value=$(echo "$value" | sed 's/^"//;s/"$//')
 
-        # Mask API key
-        if [[ "$key" == "AI_GATEWAY_API_KEY" ]]; then
+        # Mask sensitive values
+        if [[ "$key" == *API_KEY* || "$key" == *TOKEN* || "$key" == *SECRET* || "$key" == *PASSWORD* ]]; then
           if [[ ${#value} -gt 8 ]]; then
-            masked="${value:0:4}...${value: -4}"
+            masked="${value:0:4}****${value: -4}"
           else
             masked="****"
           fi
@@ -869,9 +940,9 @@ ${YELLOW}COMMANDS:${NC}
                   - ai-review config unset K     Remove a config value
                   - ai-review config edit        Open config in editor
     diff          Show staged diff with line numbers
-                  - ai-review diff             Show staged changes
-                  - ai-review diff --all       Show all changes (not just staged)
-                  - ai-review diff --no-path   Hide file paths
+                  - ai-review diff               Show staged changes
+                  - ai-review diff --all         Show all changes (not just staged)
+                  - ai-review diff --no-path     Hide file paths
     status        Show installation and configuration status
     update        Update AI Review to the latest version
     help          Show this help message
@@ -879,37 +950,34 @@ ${YELLOW}COMMANDS:${NC}
 ${YELLOW}OPTIONS:${NC}
     --version     Show version number
 
-${YELLOW}EXAMPLES:${NC}
-    ai-review setup                      # Configure credentials
-    ai-review install                    # Enable AI review for current repo
-    ai-review config set AI_MODEL gpt-4  # Change AI model
-    ai-review status                     # Check if everything is set up
-
-${YELLOW}SONARQUBE CONFIGURATION:${NC}
-    ${BOLD}Global Configuration (via 'ai-review config'):${NC}
-    ENABLE_SONARQUBE_LOCAL      Enable/disable SonarQube (true/false)
+${YELLOW}CONFIG KEYS:${NC}
+    AI_GATEWAY_URL              AI Gateway service endpoint
+    AI_GATEWAY_API_KEY          AI Gateway authentication key
+    AI_MODEL                    AI model (default: gemini-2.0-flash)
+    AI_PROVIDER                 AI provider (default: google)
+    ENABLE_SONARQUBE_LOCAL      Enable SonarQube local analysis (true/false)
     SONAR_HOST_URL              SonarQube server URL
     SONAR_TOKEN                 SonarQube authentication token
     SONAR_BLOCK_ON_HOTSPOTS     Block commits on security hotspots (true/false)
-    
-    ${BOLD}Per-Project Configuration (via 'git config'):${NC}
-    aireview.sonarProjectKey    SonarQube project key (unique per project)
-    aireview.baseBranch         Branch to compare changes against (e.g., main)
-    
-    ${BOLD}Examples:${NC}
-    ai-review config ENABLE_SONARQUBE_LOCAL true
-    ai-review config SONAR_HOST_URL https://sonarqube.sotatek.works
-    ai-review config SONAR_TOKEN <your-token>
-    git config --local aireview.sonarProjectKey "my-project"
-    git config --local aireview.baseBranch "develop"
+
+    Per-project (via git config):
+    aireview.sonarProjectKey    SonarQube project key
+    aireview.baseBranch         Branch to compare against (e.g., main)
+
+${YELLOW}EXAMPLES:${NC}
+    ai-review setup                                          # Interactive setup
+    ai-review install                                        # Enable for current repo
+    ai-review config set AI_MODEL gpt-4                      # Change AI model
+    ai-review config set ENABLE_SONARQUBE_LOCAL true          # Enable SonarQube
+    git config --local aireview.sonarProjectKey "my-project"  # Set project key
+    ai-review status                                         # Check setup
 
 ${YELLOW}BYPASSING:${NC}
-    To skip AI review for a single commit:
     git commit --no-verify -m "message"
 
 ${YELLOW}MORE INFO:${NC}
-    Config location: $CONFIG_FILE
-    Hook location:   $HOOK_SCRIPT
+    Config: $CONFIG_FILE
+    Hook:   $HOOK_SCRIPT
 
 EOF
 }

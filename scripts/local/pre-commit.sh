@@ -103,24 +103,27 @@ load_config() {
 # ============================================
 
 get_staged_diff() {
-  local raw_diff=$(git diff --cached)
+  DIFF=$(git diff --cached)
 
-  if [[ -z "$raw_diff" ]]; then
+  if [[ -z "$DIFF" ]]; then
     log_success "No staged changes to review"
     exit 0
   fi
 
-  # Try to add line numbers using showlinenum.awk if gawk is available
-  local showlinenum="$CONFIG_DIR/hooks/showlinenum.awk"
-  if command -v gawk &>/dev/null && [[ -f "$showlinenum" ]]; then
-    DIFF=$(echo "$raw_diff" | gawk -f "$showlinenum" show_header=0 show_path=1)
-  else
-    # Fallback to raw diff without line numbers
-    DIFF="$raw_diff"
-  fi
-
   DIFF_LINES=$(echo "$DIFF" | wc -l)
   log_info "Reviewing $DIFF_LINES lines of changes"
+}
+
+# Add line numbers to diff using showlinenum.awk (run AFTER filtering)
+format_diff() {
+  local showlinenum="$CONFIG_DIR/hooks/showlinenum.awk"
+  if command -v gawk &>/dev/null && [[ -f "$showlinenum" ]]; then
+    local formatted
+    formatted=$(echo "$DIFF" | gawk -f "$showlinenum" show_header=0 show_path=1 2>/dev/null) || true
+    if [[ -n "$formatted" ]]; then
+      DIFF="$formatted"
+    fi
+  fi
 }
 
 # ============================================
@@ -746,6 +749,7 @@ main() {
 
   get_staged_diff
   filter_ignored_files
+  format_diff
   detect_language
   call_ai_gateway
   display_results
