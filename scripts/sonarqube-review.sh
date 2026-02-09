@@ -180,7 +180,6 @@ sonar.sourceEncoding=UTF-8
 # SCM settings
 sonar.scm.provider=git
 EOF
-
   # Add language-specific configurations
   if [[ -f "package.json" ]]; then
     echo "sonar.javascript.lcov.reportPaths=coverage/lcov.info" >> sonar-project.properties
@@ -207,7 +206,6 @@ SONAR_OPTS="$SONAR_OPTS -Dsonar.log.level=WARN -Dsonar.verbose=false"
 # Detect if running in CI/CD or local pre-commit
 if [[ -n "$GITHUB_ACTIONS" || -n "$CI" ]]; then
   # CI/CD Mode: Use SCM integration for blame information
-
   # Add PR-specific parameters if in GitHub Actions PR
   if [[ -n "$GITHUB_BASE_REF" && -n "$GITHUB_HEAD_REF" ]]; then
     PR_NUMBER=$(echo "$GITHUB_REF" | sed -n 's/refs\/pull\/\([0-9]*\)\/merge/\1/p')
@@ -252,7 +250,6 @@ else
   if [[ "$CURRENT_BRANCH" == "$BASE_BRANCH" ]]; then
     # On base branch: Only scan staged files (pre-commit)
     FILES_TO_SCAN=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
-
   else
     # On feature branch: Scan all changed files compared to base + staged files
     if [[ -n "$BASE_BRANCH" ]]; then
