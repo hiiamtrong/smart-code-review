@@ -138,8 +138,13 @@ install_scripts() {
     # Copy from local source
     cp "$SCRIPT_DIR/ai-review" "$BIN_DIR/ai-review"
     cp "$SCRIPT_DIR/pre-commit.sh" "$HOOKS_DIR/pre-commit.sh"
-    # Copy showlinenum.awk from parent scripts directory
+    cp "$SCRIPT_DIR/enable-local-sonarqube.sh" "$HOOKS_DIR/enable-local-sonarqube.sh"
+    # Copy SonarQube scripts from parent scripts directory
+    local SONAR_REVIEW_SRC="$(dirname "$SCRIPT_DIR")/sonarqube-review.sh"
     local SHOWLINENUM_SRC="$(dirname "$SCRIPT_DIR")/showlinenum.awk"
+    if [[ -f "$SONAR_REVIEW_SRC" ]]; then
+      cp "$SONAR_REVIEW_SRC" "$HOOKS_DIR/sonarqube-review.sh"
+    fi
     if [[ -f "$SHOWLINENUM_SRC" ]]; then
       cp "$SHOWLINENUM_SRC" "$HOOKS_DIR/showlinenum.awk"
     fi
@@ -147,15 +152,20 @@ install_scripts() {
     # Download from remote
     curl -sSL "$REPO_URL/scripts/local/ai-review" -o "$BIN_DIR/ai-review"
     curl -sSL "$REPO_URL/scripts/local/pre-commit.sh" -o "$HOOKS_DIR/pre-commit.sh"
+    curl -sSL "$REPO_URL/scripts/local/enable-local-sonarqube.sh" -o "$HOOKS_DIR/enable-local-sonarqube.sh"
+    curl -sSL "$REPO_URL/scripts/sonarqube-review.sh" -o "$HOOKS_DIR/sonarqube-review.sh" 2>/dev/null || true
     curl -sSL "$REPO_URL/scripts/showlinenum.awk" -o "$HOOKS_DIR/showlinenum.awk" 2>/dev/null || true
   fi
 
   chmod +x "$BIN_DIR/ai-review"
   chmod +x "$HOOKS_DIR/pre-commit.sh"
+  chmod +x "$HOOKS_DIR/enable-local-sonarqube.sh"
+  [[ -f "$HOOKS_DIR/sonarqube-review.sh" ]] && chmod +x "$HOOKS_DIR/sonarqube-review.sh"
   [[ -f "$HOOKS_DIR/showlinenum.awk" ]] && chmod +x "$HOOKS_DIR/showlinenum.awk"
 
   log_success "Installed ai-review CLI to $BIN_DIR/ai-review"
   log_success "Installed hook template to $HOOKS_DIR/pre-commit.sh"
+  log_success "Installed SonarQube integration scripts"
 }
 
 # Interactive configuration

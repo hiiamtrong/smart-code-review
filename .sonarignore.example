@@ -1,0 +1,81 @@
+# SonarQube Exclusions
+# This file lets you exclude files/directories from SonarQube analysis
+# Each project can create its own .sonarignore file
+#
+# Syntax: Similar to .gitignore
+# - One pattern per line
+# - Lines starting with # are comments
+# - Empty lines are ignored
+# - Patterns are automatically prefixed with **/ for recursive matching
+#
+# Example patterns:
+
+# Build outputs
+dist/
+build/
+target/
+out/
+
+# Dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+
+# Test files (if not already excluded by default)
+*.test.js
+*.spec.ts
+__tests__/
+test/
+tests/
+
+# Generated files
+*.generated.js
+*-generated.ts
+*.min.js
+*.bundle.js
+
+# Static assets
+public/assets/
+static/images/
+*.svg
+*.png
+*.jpg
+
+# Configuration files
+*.config.js
+webpack.config.js
+
+# Documentation
+docs/
+*.md
+README.md
+
+# IDE & Editor directories
+.idea/
+.vscode/
+.cursor/
+.vs/
+.fleet/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Large data files
+*.json
+*.csv
+*.xml
+data/
+
+# Third-party code
+lib/
+libs/
+vendor/
+third-party/
+
+# Example: Exclude specific directories
+# old-code/
+# deprecated/
+# legacy/
+

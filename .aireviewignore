@@ -40,6 +40,19 @@ docs/*
 *.csv
 *.xml
 
+# SonarQube generated files (should be auto-cleaned but just in case)
+.scannerwork/*
+.sonar/*
+.sonar_lock
+.sonar*
+report-task.txt
+sonar-report.json
+sonar-project.properties
+
+# SonarQube configuration files
+.sonarignore
+.sonarignore.example
+
 # Examples (uncomment to use):
 # node_modules/*
 # vendor/*

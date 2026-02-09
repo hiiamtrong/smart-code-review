@@ -182,6 +182,161 @@ EOF
   echo "  2. Run: ai-review install"
 }
 
+# Create .sonarignore template in project root
+create_sonarignore_template() {
+  local repo_root=$(git rev-parse --show-toplevel)
+  local sonarignore_file="$repo_root/.sonarignore"
+  
+  # Skip if .sonarignore already exists
+  if [[ -f "$sonarignore_file" ]]; then
+    log_info ".sonarignore already exists, skipping"
+    return 0
+  fi
+  
+  log_info "Creating .sonarignore template..."
+  
+  cat > "$sonarignore_file" << 'EOF'
+# SonarQube Exclusions
+# Exclude files/directories from SonarQube analysis
+# Syntax: Similar to .gitignore (one pattern per line)
+
+# IDE & Editor directories
+.idea/
+.vscode/
+.cursor/
+.vs/
+.fleet/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build outputs
+dist/
+build/
+target/
+out/
+
+# Dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+
+# Test files (customize as needed)
+*.test.js
+*.spec.ts
+__tests__/
+
+# Static assets (images, fonts, etc.)
+public/assets/
+static/images/
+*.svg
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.woff
+*.woff2
+*.ttf
+
+# Generated/minified files
+*.min.js
+*.min.css
+*.bundle.js
+*.generated.js
+*-generated.ts
+
+# Configuration
+*.config.js
+
+# Documentation
+docs/
+*.md
+
+# Add your project-specific exclusions below:
+# example-dir/
+# legacy-code/
+
+EOF
+
+  log_success "Created .sonarignore template"
+  echo "   Customize it to fit your project needs"
+  echo "   Location: $sonarignore_file"
+}
+
+# Configure project-specific SonarQube settings
+configure_project_sonarqube() {
+  # Load global config to check if SonarQube is enabled
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    return 0
+  fi
+  
+  source "$CONFIG_FILE"
+  
+  # Check if SonarQube is enabled locally
+  if [[ "${ENABLE_SONARQUBE_LOCAL}" != "true" ]]; then
+    return 0
+  fi
+  
+  echo ""
+  log_info "SonarQube is enabled - Project configuration needed"
+  echo ""
+  
+  # Check if project key already exists in git config
+  local existing_key=$(git config --local aireview.sonarProjectKey 2>/dev/null)
+  
+  if [[ -n "$existing_key" ]]; then
+    echo "Current SonarQube Project Key: $existing_key"
+    read -p "Keep this project key? [Y/n]: " keep_key
+    if [[ "$keep_key" != "n" && "$keep_key" != "N" ]]; then
+      return 0
+    fi
+  fi
+  
+  # Prompt for project key
+  local repo_root=$(git rev-parse --show-toplevel)
+  local default_key=$(basename "$repo_root" | sed 's/[^a-zA-Z0-9_-]/_/g')
+  echo "Each project needs its own SonarQube Project Key"
+  echo "This key identifies your project in SonarQube"
+  echo ""
+  read -p "Enter SonarQube Project Key [$default_key]: " project_key
+  project_key="${project_key:-$default_key}"
+  
+  # Prompt for base branch
+  echo ""
+  echo "Which branch should SonarQube compare against?"
+  echo "This is used to detect changed files for differential analysis"
+  echo ""
+  
+  # Auto-detect default branch
+  local default_branch=""
+  if git rev-parse --verify main >/dev/null 2>&1; then
+    default_branch="main"
+  elif git rev-parse --verify master >/dev/null 2>&1; then
+    default_branch="master"
+  elif git rev-parse --verify develop >/dev/null 2>&1; then
+    default_branch="develop"
+  fi
+  
+  if [[ -n "$default_branch" ]]; then
+    read -p "Enter base branch name [$default_branch]: " base_branch
+    base_branch="${base_branch:-$default_branch}"
+  else
+    read -p "Enter base branch name [main]: " base_branch
+    base_branch="${base_branch:-main}"
+  fi
+  
+  # Save to git config (stored in .git/config, not committed)
+  git config --local aireview.sonarProjectKey "$project_key"
+  git config --local aireview.baseBranch "$base_branch"
+  
+  log_success "Project configuration saved to git config"
+  echo "   Project Key: $project_key"
+  echo "   Base Branch: $base_branch"
+  echo "   Stored in: .git/config (not committed)"
+}
+
 cmd_install() {
   check_git_repo
   check_config_exists
@@ -205,6 +360,12 @@ cmd_install() {
   fi
 
   chmod +x "$target_hook"
+
+  # Create .sonarignore if it doesn't exist
+  create_sonarignore_template
+  
+  # Configure project-specific SonarQube settings if enabled
+  configure_project_sonarqube
 
   log_success "AI Review hook installed"
   echo ""
@@ -440,6 +601,12 @@ cmd_config() {
         exit 1
       fi
 
+      # Validate key format (only allow alphanumeric and underscores)
+      if [[ ! "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+        log_error "Invalid config key: $key (only letters, numbers, underscores allowed)"
+        exit 1
+      fi
+
       check_config_exists
 
       # Update or add the key
@@ -451,6 +618,32 @@ cmd_config() {
       fi
 
       log_success "Updated $key"
+      ;;
+
+    unset)
+      local key="$2"
+
+      if [[ -z "$key" ]]; then
+        log_error "Usage: ai-review config unset KEY"
+        exit 1
+      fi
+
+      # Validate key format (only allow alphanumeric and underscores)
+      if [[ ! "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+        log_error "Invalid config key: $key (only letters, numbers, underscores allowed)"
+        exit 1
+      fi
+
+      check_config_exists
+
+      # Remove the key
+      if grep -q "^${key}=" "$CONFIG_FILE"; then
+        sed -i.bak "/^${key}=/d" "$CONFIG_FILE"
+        rm -f "$CONFIG_FILE.bak"
+        log_success "Removed $key from config"
+      else
+        log_warn "$key not found in config"
+      fi
       ;;
 
     edit)
@@ -465,7 +658,7 @@ cmd_config() {
 
     *)
       log_error "Unknown config action: $action"
-      echo "Usage: ai-review config [show|set|edit]"
+      echo "Usage: ai-review config [show|set|unset|edit]"
       exit 1
       ;;
   esac
@@ -632,6 +825,28 @@ cmd_update() {
     rm -f "$HOOKS_DIR/showlinenum.awk.new"
   fi
 
+  # Update sonarqube-review.sh
+  echo "Downloading sonarqube-review.sh..."
+  if curl -sSL "$REPO_URL/scripts/sonarqube-review.sh" -o "$HOOKS_DIR/sonarqube-review.sh.new"; then
+    mv "$HOOKS_DIR/sonarqube-review.sh.new" "$HOOKS_DIR/sonarqube-review.sh"
+    chmod +x "$HOOKS_DIR/sonarqube-review.sh"
+    log_success "sonarqube-review.sh updated"
+  else
+    log_warn "Failed to download sonarqube-review.sh (optional)"
+    rm -f "$HOOKS_DIR/sonarqube-review.sh.new"
+  fi
+
+  # Update enable-local-sonarqube.sh
+  echo "Downloading enable-local-sonarqube.sh..."
+  if curl -sSL "$REPO_URL/scripts/local/enable-local-sonarqube.sh" -o "$HOOKS_DIR/enable-local-sonarqube.sh.new"; then
+    mv "$HOOKS_DIR/enable-local-sonarqube.sh.new" "$HOOKS_DIR/enable-local-sonarqube.sh"
+    chmod +x "$HOOKS_DIR/enable-local-sonarqube.sh"
+    log_success "enable-local-sonarqube.sh updated"
+  else
+    log_warn "Failed to download enable-local-sonarqube.sh (optional)"
+    rm -f "$HOOKS_DIR/enable-local-sonarqube.sh.new"
+  fi
+
   echo ""
   log_success "Update complete!"
   echo "New version: $(ai-review --version 2>/dev/null || echo 'unknown')"
@@ -649,9 +864,10 @@ ${YELLOW}COMMANDS:${NC}
     install       Install AI Review hook in the current repository
     uninstall     Remove AI Review hook from the current repository
     config        View or modify configuration
-                  - ai-review config           Show current config
-                  - ai-review config set K V   Set a config value
-                  - ai-review config edit      Open config in editor
+                  - ai-review config             Show current config
+                  - ai-review config set K V     Set a config value
+                  - ai-review config unset K     Remove a config value
+                  - ai-review config edit        Open config in editor
     diff          Show staged diff with line numbers
                   - ai-review diff             Show staged changes
                   - ai-review diff --all       Show all changes (not just staged)
@@ -668,6 +884,24 @@ ${YELLOW}EXAMPLES:${NC}
     ai-review install                    # Enable AI review for current repo
     ai-review config set AI_MODEL gpt-4  # Change AI model
     ai-review status                     # Check if everything is set up
+
+${YELLOW}SONARQUBE CONFIGURATION:${NC}
+    ${BOLD}Global Configuration (via 'ai-review config'):${NC}
+    ENABLE_SONARQUBE_LOCAL      Enable/disable SonarQube (true/false)
+    SONAR_HOST_URL              SonarQube server URL
+    SONAR_TOKEN                 SonarQube authentication token
+    SONAR_BLOCK_ON_HOTSPOTS     Block commits on security hotspots (true/false)
+    
+    ${BOLD}Per-Project Configuration (via 'git config'):${NC}
+    aireview.sonarProjectKey    SonarQube project key (unique per project)
+    aireview.baseBranch         Branch to compare changes against (e.g., main)
+    
+    ${BOLD}Examples:${NC}
+    ai-review config ENABLE_SONARQUBE_LOCAL true
+    ai-review config SONAR_HOST_URL https://sonarqube.sotatek.works
+    ai-review config SONAR_TOKEN <your-token>
+    git config --local aireview.sonarProjectKey "my-project"
+    git config --local aireview.baseBranch "develop"
 
 ${YELLOW}BYPASSING:${NC}
     To skip AI review for a single commit:

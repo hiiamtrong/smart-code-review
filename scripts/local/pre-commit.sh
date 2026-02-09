@@ -71,6 +71,7 @@ load_config() {
     exit 1
   fi
 
+  # Load global config
   source "$CONFIG_FILE"
 
   if [[ -z "$AI_GATEWAY_URL" ]]; then
@@ -86,6 +87,15 @@ load_config() {
   # Set defaults
   AI_MODEL="${AI_MODEL:-gemini-2.0-flash}"
   AI_PROVIDER="${AI_PROVIDER:-google}"
+  ENABLE_SONARQUBE_LOCAL="${ENABLE_SONARQUBE_LOCAL:-false}"
+  SONAR_BLOCK_ON_HOTSPOTS="${SONAR_BLOCK_ON_HOTSPOTS:-true}"
+  
+  # Load project-specific config from git config (overrides global config)
+  local project_key=$(git config --local aireview.sonarProjectKey 2>/dev/null)
+
+  if [[ -n "$project_key" ]]; then
+    SONAR_PROJECT_KEY="$project_key"
+  fi
 }
 
 # ============================================
@@ -553,7 +563,14 @@ call_ai_gateway_sync() {
 
 display_results() {
   if [[ -z "$REVIEW_JSON" ]]; then
-    log_success "No issues found"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_success "✅ AI Review: No issues found!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
+      log_success "🎉 All checks passed! Commit proceeding..."
+    fi
     exit 0
   fi
 
@@ -567,7 +584,14 @@ display_results() {
   local diagnostics=$(echo "$REVIEW_JSON" | jq -c '.diagnostics // []' 2>/dev/null)
 
   if [[ "$diagnostics" == "[]" || "$diagnostics" == "null" ]]; then
-    log_success "No issues found"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_success "✅ AI Review: No issues found!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
+      log_success "🎉 All checks passed! Commit proceeding..."
+    fi
     exit 0
   fi
 
@@ -597,20 +621,104 @@ display_results() {
 
   print_separator
   echo ""
-  echo -e "${BOLD}Summary:${NC} $error_count errors, $warning_count warnings, $info_count info"
+  echo -e "${BOLD}AI Review Summary:${NC} $error_count errors, $warning_count warnings, $info_count info"
   echo ""
 
   # Determine exit code based on errors
   if [[ "$error_count" -gt 0 ]]; then
-    log_error "Commit blocked - please fix ERROR issues first"
-    echo "        Use 'git commit --no-verify' to bypass (not recommended)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_error "🚫 COMMIT BLOCKED"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    log_error "AI Review found errors that must be fixed."
+    echo ""
+    echo "Next steps:"
+    echo "  1. Fix the AI Review errors shown above"
+    echo "  2. Run 'git commit' again"
+    if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
+      echo "  3. SonarQube will run again, then AI Review"
+    fi
+    echo ""
+    echo "Or bypass: git commit --no-verify"
+    echo ""
     exit 1
   elif [[ "$warning_count" -gt 0 ]]; then
-    log_success "Commit allowed - but consider fixing warnings above"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_success "✅ Commit allowed (with warnings)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    log_warn "Consider fixing the warnings above"
+    if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
+      log_success "🎉 All checks passed! Commit proceeding..."
+    fi
     exit 0
   else
-    log_success "Commit allowed"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_success "✅ All checks passed!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
+      log_success "🎉 SonarQube ✓  AI Review ✓  Commit proceeding..."
+    else
+      log_success "🎉 AI Review ✓  Commit proceeding..."
+    fi
     exit 0
+  fi
+}
+
+# ============================================
+# Run SonarQube Analysis (if enabled)
+# ============================================
+
+run_sonarqube_analysis() {
+  if [[ "$ENABLE_SONARQUBE_LOCAL" != "true" ]]; then
+    return 0
+  fi
+
+  # Check if SonarQube credentials are configured
+  if [[ -z "$SONAR_HOST_URL" || -z "$SONAR_TOKEN" ]]; then
+    log_warn "SonarQube credentials not configured, skipping"
+    return 0
+  fi
+
+  # Export variables for sonarqube-review.sh
+  export SONAR_HOST_URL
+  export SONAR_TOKEN
+  export SONAR_PROJECT_KEY
+  export SONAR_BLOCK_ON_HOTSPOTS
+  export SONAR_QUIET="true"
+
+  # Find the sonarqube-review.sh script in hooks directory
+  local sonar_script="$CONFIG_DIR/hooks/sonarqube-review.sh"
+
+  if [[ ! -f "$sonar_script" ]]; then
+    log_warn "SonarQube script not found, skipping"
+    return 0
+  fi
+
+  print_separator
+  echo -e "  ${BOLD}STEP 1/2: SonarQube Static Analysis${NC}"
+  print_separator
+  echo ""
+
+  # Run SonarQube and capture exit code
+  bash "$sonar_script" 2>&1
+  local sonar_exit_code=$?
+
+  if [[ $sonar_exit_code -eq 0 ]]; then
+    return 0
+  elif [[ $sonar_exit_code -eq 1 ]]; then
+    echo ""
+    print_separator
+    log_error "COMMIT BLOCKED - SonarQube found errors"
+    print_separator
+    echo ""
+    echo "  Fix the errors above, then commit again."
+    echo "  Bypass: git commit --no-verify"
+    echo ""
+    exit 1
+  else
+    log_warn "SonarQube failed to run, continuing with AI review"
   fi
 }
 
@@ -619,15 +727,72 @@ display_results() {
 # ============================================
 
 main() {
-  log_info "AI Review analyzing your changes..."
+  load_config
+
   echo ""
 
-  load_config
+  # Check if SonarQube is enabled locally
+  if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
+    # Step 1: Run SonarQube (blocks on errors, exits if failed)
+    run_sonarqube_analysis
+
+    # Step 2 header
+    echo ""
+    print_separator
+    echo -e "  ${BOLD}STEP 2/2: AI-Powered Code Review${NC}"
+    print_separator
+    echo ""
+  fi
+
   get_staged_diff
   filter_ignored_files
   detect_language
   call_ai_gateway
   display_results
+  
+  # Cleanup: Remove any temporary output files from project directory
+  cleanup_temp_files
+}
+
+# ============================================
+# Cleanup Temporary Files
+# ============================================
+
+cleanup_temp_files() {
+  # Move output files to temp directory (not in project)
+  TEMP_DIR="$CONFIG_DIR/temp"
+  mkdir -p "$TEMP_DIR"
+  
+  # List of temporary files to clean up
+  local temp_files=(
+    "ai-output.jsonl"
+    "sonarqube-output.jsonl"
+    "combined-output.jsonl"
+    "ai-overview.txt"
+    "sonarqube-overview.txt"
+    "combined-overview.txt"
+  )
+  
+  for file in "${temp_files[@]}"; do
+    if [[ -f "$file" ]]; then
+      mv "$file" "$TEMP_DIR/" 2>/dev/null || rm -f "$file" 2>/dev/null
+    fi
+  done
+  
+  # Comprehensive cleanup of ALL SonarQube-generated files
+  rm -rf .scannerwork 2>/dev/null || true
+  rm -rf .sonar 2>/dev/null || true
+  rm -f .sonar_lock 2>/dev/null || true
+  rm -f report-task.txt 2>/dev/null || true
+  rm -f sonar-report.json 2>/dev/null || true
+  
+  # Clean up any .sonar* files in current directory
+  find . -maxdepth 1 -name ".sonar*" -type f -delete 2>/dev/null || true
+  
+  # Clean up auto-generated sonar-project.properties
+  if [[ -f "sonar-project.properties" ]] && grep -q "auto-generated" "sonar-project.properties" 2>/dev/null; then
+    rm -f sonar-project.properties 2>/dev/null || true
+  fi
 }
 
 main
