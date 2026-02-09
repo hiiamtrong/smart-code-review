@@ -1,6 +1,6 @@
 # Quick Reference Card
 
-## 🚀 Initial Setup (One Time)
+## Initial Setup (One Time)
 
 ```bash
 # 1. Install
@@ -12,7 +12,7 @@ ai-review setup
 # 3. Create project in SonarQube UI
 # Go to https://sonarqube.sotatek.works/
 # Click "Create Project" → Enter project key (e.g., "my-project")
-# ⚠️ IMPORTANT: Choose "Reference branch" for New Code definition
+# IMPORTANT: Choose "Reference branch" for New Code definition
 
 # 4. In your project (use SAME key from step 3)
 cd /path/to/project
@@ -21,7 +21,7 @@ ai-review install
 
 ---
 
-## 📝 Daily Usage
+## Daily Usage
 
 ```bash
 # Normal commit (review runs automatically)
@@ -34,7 +34,7 @@ git commit --no-verify -m "emergency fix"
 
 ---
 
-## ⚙️ Common Commands
+## Common Commands
 
 ```bash
 # View configuration
@@ -52,7 +52,7 @@ ai-review uninstall
 
 ---
 
-## 🔑 Get SonarQube Token
+## Get SonarQube Token
 
 1. Go to https://sonarqube.sotatek.works/
 2. Profile → My Account → Security
@@ -61,7 +61,7 @@ ai-review uninstall
 
 ---
 
-## 📁 Exclude Files
+## Exclude Files
 
 **`.aireviewignore`** - Exclude from AI review
 ```gitignore
@@ -79,7 +79,7 @@ dist/
 
 ---
 
-## ❓ Quick Troubleshooting
+## Quick Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
@@ -91,7 +91,7 @@ dist/
 
 ---
 
-## 📊 What Gets Scanned?
+## What Gets Scanned?
 
 - **On main/master**: Only staged files
 - **On feature branch**: Changed files from base branch
@@ -99,7 +99,7 @@ dist/
 
 ---
 
-## 🆘 Help
+## Help
 
 - Full guide: `SETUP_GUIDE.md`
 - SonarQube: https://sonarqube.sotatek.works/

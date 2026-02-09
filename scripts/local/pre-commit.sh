@@ -568,11 +568,11 @@ display_results() {
   if [[ -z "$REVIEW_JSON" ]]; then
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_success "✅ AI Review: No issues found!"
+    log_success "AI Review: No issues found!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-      log_success "🎉 All checks passed! Commit proceeding..."
+      log_success "All checks passed! Commit proceeding..."
     fi
     exit 0
   fi
@@ -589,11 +589,11 @@ display_results() {
   if [[ "$diagnostics" == "[]" || "$diagnostics" == "null" ]]; then
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_success "✅ AI Review: No issues found!"
+    log_success "AI Review: No issues found!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-      log_success "🎉 All checks passed! Commit proceeding..."
+      log_success "All checks passed! Commit proceeding..."
     fi
     exit 0
   fi
@@ -630,7 +630,7 @@ display_results() {
   # Determine exit code based on errors
   if [[ "$error_count" -gt 0 ]]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_error "🚫 COMMIT BLOCKED"
+    log_error "COMMIT BLOCKED"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     log_error "AI Review found errors that must be fixed."
@@ -647,23 +647,23 @@ display_results() {
     exit 1
   elif [[ "$warning_count" -gt 0 ]]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_success "✅ Commit allowed (with warnings)"
+    log_success "Commit allowed (with warnings)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     log_warn "Consider fixing the warnings above"
     if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-      log_success "🎉 All checks passed! Commit proceeding..."
+      log_success "All checks passed! Commit proceeding..."
     fi
     exit 0
   else
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_success "✅ All checks passed!"
+    log_success "All checks passed!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-      log_success "🎉 SonarQube ✓  AI Review ✓  Commit proceeding..."
+      log_success "SonarQube OK AI Review OK Commit proceeding..."
     else
-      log_success "🎉 AI Review ✓  Commit proceeding..."
+      log_success "AI Review OK Commit proceeding..."
     fi
     exit 0
   fi

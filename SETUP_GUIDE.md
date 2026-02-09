@@ -4,17 +4,17 @@ Quick guide for setting up AI + SonarQube code review on your local machine.
 
 ---
 
-## 📋 Prerequisites
+## Prerequisites
 
 Before starting, make sure you have:
 
-- ✅ Git installed
-- ✅ A SonarQube account on [https://sonarqube.sotatek.works/](https://sonarqube.sotatek.works/)
-- ✅ Terminal/Command Line access
+- Git installed
+- A SonarQube account on [https://sonarqube.sotatek.works/](https://sonarqube.sotatek.works/)
+- Terminal/Command Line access
 
 ---
 
-## 🚀 Step 1: Install AI Review Tool
+## Step 1: Install AI Review Tool
 
 Open your terminal and run:
 
@@ -27,7 +27,7 @@ This will install the `ai-review` command to your system.
 
 ---
 
-## 🔑 Step 2: Get Your SonarQube Token
+## Step 2: Get Your SonarQube Token
 
 1. Go to [https://sonarqube.sotatek.works/](https://sonarqube.sotatek.works/)
 2. Log in with your account
@@ -42,7 +42,7 @@ This will install the `ai-review` command to your system.
 
 ---
 
-## ⚙️ Step 3: Configure AI Review
+## Step 3: Configure AI Review
 
 Run the setup command:
 
@@ -72,11 +72,11 @@ SonarQube Token: [Paste the token you copied in Step 2]
 Block commits on Security Hotspots? (y/n): y
 ```
 
-✅ Configuration saved!
+Configuration saved!
 
 ---
 
-## 📦 Step 4: Create Project in SonarQube
+## Step 4: Create Project in SonarQube
 
 **Before installing the hook**, create your project in SonarQube:
 
@@ -87,23 +87,23 @@ Block commits on Security Hotspots? (y/n): y
    - **Project display name**: `My Awesome Project` (human-readable name)
    - **Project key**: `my-awesome-project` (lowercase, numbers, hyphens, underscores only)
 5. Click **Set Up**
-6. **⚠️ IMPORTANT: Configure "New Code" Definition**
+6. **IMPORTANT: Configure "New Code" Definition**
    - You'll see "Set up new code for project" screen
    - Select **"Reference branch"** (recommended for projects using feature branches)
    - This tells SonarQube to compare your changes against your main branch
    - The main branch will be automatically set as the reference
 7. Click **Create project**
 
-⚠️ **Remember your Project Key!** You'll need it in the next step.
+**Remember your Project Key!** You'll need it in the next step.
 
-💡 **Why Reference Branch?**
+**Why Reference Branch?**
 - The pre-commit hook uses differential analysis (only scans changed files)
 - SonarQube's "Reference branch" setting aligns with this approach
 - You'll only see issues in code you actually changed, not old issues
 
 ---
 
-## 📦 Step 5: Install in Your Project
+## Step 5: Install in Your Project
 
 Navigate to your project and run:
 
@@ -116,17 +116,17 @@ You'll be asked:
 
 1. **SonarQube Project Key**: Enter the SAME key you created in Step 4
    - Example: `my-awesome-project`
-   - ⚠️ **Must match exactly** with what you created in SonarQube UI!
+   - **Must match exactly** with what you created in SonarQube UI!
 
 2. **Base Branch**: Which branch to compare against
    - Press Enter to accept the detected branch (usually `main` or `master`)
    - Or type a custom branch like `develop`
 
-✅ Pre-commit hook installed!
+Pre-commit hook installed!
 
 ---
 
-## 🎯 How to Use
+## How to Use
 
 ### Normal Workflow
 
@@ -140,21 +140,21 @@ git commit -m "your commit message"
 The review will run automatically:
 
 ```
-🔍 Scanning changed files...
-   → 3 file(s) to analyze
-🔄 Running analysis...
-📊 Found 5 issues from SonarQube
-   🔴 Errors: 2 | 🟡 Warnings: 3 | 🔵 Info: 0
+Scanning changed files...
+   -> 3 file(s) to analyze
+Running analysis...
+Found 5 issues from SonarQube
+   Errors: 2 | Warnings: 3 | Info: 0
 
-🤖 AI Review analyzing your changes...
+AI Review analyzing your changes...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 AI Review Results
+AI Review Results
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ### If Issues Found
 
-**🚫 Commit will be blocked** if:
+**Commit will be blocked** if:
 - SonarQube finds **errors**
 - SonarQube finds **security hotspots** (if enabled)
 
@@ -168,11 +168,11 @@ If you need to commit without review:
 git commit --no-verify -m "emergency fix"
 ```
 
-⚠️ **Use sparingly!** This skips all checks.
+**Use sparingly!** This skips all checks.
 
 ---
 
-## 🔧 Managing Your Setup
+## Managing Your Setup
 
 ### View Current Configuration
 
@@ -213,7 +213,7 @@ ai-review uninstall
 
 ---
 
-## 📁 Excluding Files from Analysis
+## Excluding Files from Analysis
 
 ### Exclude from AI Review
 
@@ -254,7 +254,7 @@ docs/
 
 ---
 
-## ❓ Troubleshooting
+## Troubleshooting
 
 ### Issue: "You're not authorized to run analysis"
 
@@ -313,20 +313,20 @@ git commit -m "message"
 
 ---
 
-## 📊 What Gets Scanned?
+## What Gets Scanned?
 
 ### On Main/Master/Develop Branch
-- ✅ **Only staged files** (what you're about to commit)
+- **Only staged files** (what you're about to commit)
 
 ### On Feature Branch
-- ✅ **All files changed from base branch** + staged files
+- **All files changed from base branch** + staged files
 
 ### No Changed Files
-- ✅ **Entire project** (full scan)
+- **Entire project** (full scan)
 
 ---
 
-## 🎓 Best Practices
+## Best Practices
 
 1. **Commit frequently** - Smaller commits = fewer issues to fix
 2. **Review before staging** - Check your code before `git add`
@@ -336,19 +336,19 @@ git commit -m "message"
 
 ---
 
-## 🆘 Getting Help
+## Getting Help
 
 - **View this guide**: https://github.com/hiiamtrong/smart-code-review/blob/main/SETUP_GUIDE.md
 - **Ask your team lead** for AI Gateway credentials
 
 ---
 
-## 🎉 You're All Set!
+## You're All Set!
 
 Your local environment is now configured with:
-- ✅ AI-powered code review
-- ✅ SonarQube static analysis
-- ✅ Automatic pre-commit scanning
+- AI-powered code review
+- SonarQube static analysis
+- Automatic pre-commit scanning
 
-Happy coding! 🚀
+Happy coding!
 

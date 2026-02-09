@@ -23,14 +23,14 @@ run_test_suite() {
   local name="$1"
   local script="$2"
 
-  echo -e "${YELLOW}▶ Running $name...${NC}"
+  echo -e "${YELLOW}Running $name...${NC}"
   echo ""
 
   if bash "$script"; then
-    echo -e "${GREEN}✓ $name completed successfully${NC}"
+    echo -e "${GREEN}$name completed successfully${NC}"
     return 0
   else
-    echo -e "${RED}✗ $name had failures${NC}"
+    echo -e "${RED}$name had failures${NC}"
     return 1
   fi
 }

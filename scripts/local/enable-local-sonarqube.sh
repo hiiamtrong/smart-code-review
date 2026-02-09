@@ -38,7 +38,7 @@ echo ""
 
 # Performance warning
 cat << EOF
-${YELLOW}⚠️  Performance Warning${NC}
+${YELLOW}Performance Warning${NC}
 
 Running SonarQube in pre-commit hooks will:
   • Increase commit time from ~5s to ~30-60s
@@ -132,7 +132,7 @@ case "$choice" in
     rm -f "$CONFIG_FILE.bak"
     
     echo ""
-    echo -e "${GREEN}✅ SonarQube enabled for local commits${NC}"
+    echo -e "${GREEN}SonarQube enabled for local commits${NC}"
     echo ""
     echo "Expected commit time: 30-60 seconds"
     echo ""
@@ -153,7 +153,7 @@ case "$choice" in
     rm -f "$CONFIG_FILE.bak"
     
     echo ""
-    echo -e "${GREEN}✅ SonarQube disabled for local commits${NC}"
+    echo -e "${GREEN}SonarQube disabled for local commits${NC}"
     echo ""
     echo "AI review will still run (fast mode)"
     echo "Expected commit time: 2-10 seconds"

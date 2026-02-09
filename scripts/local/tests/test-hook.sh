@@ -42,12 +42,12 @@ print_test() {
 }
 
 pass() {
-  echo -e "${GREEN}✓ PASS${NC}: $1"
+  echo -e "${GREEN}PASS${NC}: $1"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 }
 
 fail() {
-  echo -e "${RED}✗ FAIL${NC}: $1"
+  echo -e "${RED}FAIL${NC}: $1"
   TESTS_FAILED=$((TESTS_FAILED + 1))
 }
 
@@ -277,7 +277,7 @@ setup() {
   git add README.md
   git commit -m "Initial commit" --quiet
 
-  echo -e "${GREEN}✓ Test environment ready${NC}"
+  echo -e "${GREEN}Test environment ready${NC}"
   echo ""
 }
 

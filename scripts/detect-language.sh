@@ -6,7 +6,7 @@ mkdir -p $HOME/bin
 curl -sfL https://raw.githubusercontent.com/reviewdog/reviewdog/master/install.sh | sh -s -- -b $HOME/bin
 export PATH="$HOME/bin:$PATH"
 
-echo "🔎 Detecting project language..."
+echo "Detecting project language..."
 
 if [ -f "package.json" ]; then
   if grep -q '"typescript"' package.json; then
@@ -26,7 +26,7 @@ else
   LANG="unknown"
 fi
 
-echo "➡️ Detected language: $LANG"
+echo "Detected language: $LANG"
 
 # Export environment variables for the AI review script
 export DETECTED_LANGUAGE="$LANG"
