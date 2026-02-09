@@ -1,30 +1,30 @@
 # Smart Code Review GitHub Action
 
-🤖 **AI-Powered Code Review with Language Detection and Linting Integration**
+**AI-Powered Code Review with Language Detection and Linting Integration**
 
 This GitHub Action automatically detects your project's language/framework and combines traditional linting tools with AI-powered code review using [reviewdog](https://github.com/reviewdog/reviewdog) for seamless PR integration.
 
-## ✨ Features
+## Features
 
-- **🔍 Language Detection**: Automatically detects project type based on configuration files
-- **🤖 AI-Powered Review**: Intelligent code analysis using configurable AI models
-- **📊 SonarQube Integration**: Combine static analysis with AI review ([Setup Guide](SONARQUBE_INTEGRATION.md))
-- **🛠️ Traditional Linting**: Integrates with popular linters for each language
-- **📝 Smart Diff Analysis**: Reviews only changes in PRs or since last push
-- **💬 Inline Comments**: Posts review comments directly on PR lines
-- **🔧 Configurable**: Flexible AI model and provider selection
+- **Language Detection**: Automatically detects project type based on configuration files
+- **AI-Powered Review**: Intelligent code analysis using configurable AI models
+- **SonarQube Integration**: Combine static analysis with AI review ([Setup Guide](SONARQUBE_INTEGRATION.md))
+- **Traditional Linting**: Integrates with popular linters for each language
+- **Smart Diff Analysis**: Reviews only changes in PRs or since last push
+- **Inline Comments**: Posts review comments directly on PR lines
+- **Configurable**: Flexible AI model and provider selection
 
-## 📚 Supported Languages & Tools
+## Supported Languages & Tools
 
 | Language               | Linters                     | AI Review |
 | ---------------------- | --------------------------- | --------- |
-| **Node.js/TypeScript** | ESLint                      | ✅         |
-| **Python**             | ruff → flake8 → pylint      | ✅         |
-| **Java**               | Checkstyle (Maven/Gradle)   | ✅         |
-| **Go**                 | staticcheck → golangci-lint | ✅         |
-| **.NET**               | dotnet format               | ✅         |
+| **Node.js/TypeScript** | ESLint                      | Yes       |
+| **Python**             | ruff → flake8 → pylint      | Yes       |
+| **Java**               | Checkstyle (Maven/Gradle)   | Yes       |
+| **Go**                 | staticcheck → golangci-lint | Yes       |
+| **.NET**               | dotnet format               | Yes       |
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Basic Usage
 
@@ -69,7 +69,7 @@ jobs:
           ai_provider: "anthropic"        # Optional: AI provider selection
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ### Ignore Files from Review
 
@@ -136,7 +136,7 @@ Add these secrets to your repository (Settings → Secrets and variables → Act
 - `AI_GATEWAY_URL`: Your AI Gateway service endpoint
 - `AI_GATEWAY_API_KEY`: Authentication key for your AI Gateway
 
-## 🏗️ How It Works
+## How It Works
 
 1. **Language Detection**: Analyzes project files to identify the primary language
 2. **Traditional Linting**: Runs appropriate linters (ESLint, ruff, etc.)
@@ -146,7 +146,7 @@ Add these secrets to your repository (Settings → Secrets and variables → Act
 4. **AI Analysis**: Sends diff to AI Gateway for intelligent review
 5. **PR Integration**: Posts findings as inline comments via reviewdog
 
-## 🔧 Local Development & Testing
+## Local Development & Testing
 
 ### Prerequisites
 
@@ -173,7 +173,7 @@ bash scripts/detect-language.sh
 bash scripts/ai-review.sh
 ```
 
-## 🖥️ Local Installation (Git Hook)
+## Local Installation (Git Hook)
 
 You can install AI Review as a git pre-commit hook to automatically review code before each commit.
 
@@ -278,20 +278,20 @@ When you run `git commit`, the hook will:
 ### Example Output
 
 ```
-🔍 AI Review analyzing your changes...
-📊 Reviewing 45 lines of changes
+AI Review analyzing your changes...
+Reviewing 45 lines of changes
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-❌ ERROR: SQL Injection vulnerability detected
+ERROR: SQL Injection vulnerability detected
    src/utils/db.js:42
 
-⚠️  WARNING: Missing error handling
+WARNING: Missing error handling
    src/api/handler.js:87
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Summary: 1 errors, 1 warnings, 0 info
 
-🚫 Commit blocked - please fix ERROR issues first
+Commit blocked - please fix ERROR issues first
    Use git commit --no-verify to bypass (not recommended)
 ```
 
@@ -324,7 +324,7 @@ ai-review uninstall
 rm -rf ~/.config/ai-review ~/.local/bin/ai-review
 ```
 
-## 📖 AI Gateway Integration
+## AI Gateway Integration
 
 This action expects your AI Gateway to:
 
@@ -362,7 +362,7 @@ The gateway should return reviewdog-compatible diagnostic format:
 }
 ```
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -370,15 +370,15 @@ The gateway should return reviewdog-compatible diagnostic format:
 4. Test locally
 5. Submit a pull request
 
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## 🆘 Support
+## Support
 
 - **Issues**: [GitHub Issues](https://github.com/hiiamtrong/smart-code-review/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/hiiamtrong/smart-code-review/discussions)
 
 ---
 
-Made with ❤️ by [hiiamtrong](https://github.com/hiiamtrong)
+Made by [hiiamtrong](https://github.com/hiiamtrong)

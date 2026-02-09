@@ -92,18 +92,9 @@ load_config() {
   
   # Load project-specific config from git config (overrides global config)
   local project_key=$(git config --local aireview.sonarProjectKey 2>/dev/null)
-  
+
   if [[ -n "$project_key" ]]; then
     SONAR_PROJECT_KEY="$project_key"
-    log_info "Using project-specific SonarQube key: $project_key"
-  fi
-  
-  # Debug: show config status
-  if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-    log_info "SonarQube local mode: ENABLED"
-    if [[ -n "$SONAR_PROJECT_KEY" ]]; then
-      log_info "Project Key: $SONAR_PROJECT_KEY"
-    fi
   fi
 }
 
@@ -112,24 +103,27 @@ load_config() {
 # ============================================
 
 get_staged_diff() {
-  local raw_diff=$(git diff --cached)
+  DIFF=$(git diff --cached)
 
-  if [[ -z "$raw_diff" ]]; then
+  if [[ -z "$DIFF" ]]; then
     log_success "No staged changes to review"
     exit 0
   fi
 
-  # Try to add line numbers using showlinenum.awk if gawk is available
-  local showlinenum="$CONFIG_DIR/hooks/showlinenum.awk"
-  if command -v gawk &>/dev/null && [[ -f "$showlinenum" ]]; then
-    DIFF=$(echo "$raw_diff" | gawk -f "$showlinenum" show_header=0 show_path=1)
-  else
-    # Fallback to raw diff without line numbers
-    DIFF="$raw_diff"
-  fi
-
   DIFF_LINES=$(echo "$DIFF" | wc -l)
   log_info "Reviewing $DIFF_LINES lines of changes"
+}
+
+# Add line numbers to diff using showlinenum.awk (run AFTER filtering)
+format_diff() {
+  local showlinenum="$CONFIG_DIR/hooks/showlinenum.awk"
+  if command -v gawk &>/dev/null && [[ -f "$showlinenum" ]]; then
+    local formatted
+    formatted=$(echo "$DIFF" | gawk -f "$showlinenum" show_header=0 show_path=1 2>/dev/null) || true
+    if [[ -n "$formatted" ]]; then
+      DIFF="$formatted"
+    fi
+  fi
 }
 
 # ============================================
@@ -574,11 +568,11 @@ display_results() {
   if [[ -z "$REVIEW_JSON" ]]; then
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_success "✅ AI Review: No issues found!"
+    log_success "AI Review: No issues found!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-      log_success "🎉 All checks passed! Commit proceeding..."
+      log_success "All checks passed! Commit proceeding..."
     fi
     exit 0
   fi
@@ -595,11 +589,11 @@ display_results() {
   if [[ "$diagnostics" == "[]" || "$diagnostics" == "null" ]]; then
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_success "✅ AI Review: No issues found!"
+    log_success "AI Review: No issues found!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-      log_success "🎉 All checks passed! Commit proceeding..."
+      log_success "All checks passed! Commit proceeding..."
     fi
     exit 0
   fi
@@ -636,7 +630,7 @@ display_results() {
   # Determine exit code based on errors
   if [[ "$error_count" -gt 0 ]]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_error "🚫 COMMIT BLOCKED"
+    log_error "COMMIT BLOCKED"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     log_error "AI Review found errors that must be fixed."
@@ -653,23 +647,23 @@ display_results() {
     exit 1
   elif [[ "$warning_count" -gt 0 ]]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_success "✅ Commit allowed (with warnings)"
+    log_success "Commit allowed (with warnings)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     log_warn "Consider fixing the warnings above"
     if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-      log_success "🎉 All checks passed! Commit proceeding..."
+      log_success "All checks passed! Commit proceeding..."
     fi
     exit 0
   else
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_success "✅ All checks passed!"
+    log_success "All checks passed!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-      log_success "🎉 SonarQube ✓  AI Review ✓  Commit proceeding..."
+      log_success "SonarQube OK AI Review OK Commit proceeding..."
     else
-      log_success "🎉 AI Review ✓  Commit proceeding..."
+      log_success "AI Review OK Commit proceeding..."
     fi
     exit 0
   fi
@@ -684,13 +678,9 @@ run_sonarqube_analysis() {
     return 0
   fi
 
-  log_info "SonarQube local analysis enabled"
-  echo ""
-
   # Check if SonarQube credentials are configured
   if [[ -z "$SONAR_HOST_URL" || -z "$SONAR_TOKEN" ]]; then
     log_warn "SonarQube credentials not configured, skipping"
-    log_info "Run: bash scripts/local/enable-local-sonarqube.sh"
     return 0
   fi
 
@@ -699,53 +689,39 @@ run_sonarqube_analysis() {
   export SONAR_TOKEN
   export SONAR_PROJECT_KEY
   export SONAR_BLOCK_ON_HOTSPOTS
+  export SONAR_QUIET="true"
 
   # Find the sonarqube-review.sh script in hooks directory
   local sonar_script="$CONFIG_DIR/hooks/sonarqube-review.sh"
 
   if [[ ! -f "$sonar_script" ]]; then
-    log_warn "SonarQube script not found at $sonar_script"
-    log_info "Continuing with AI review only"
+    log_warn "SonarQube script not found, skipping"
     return 0
   fi
 
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "📊 STEP 1/2: SonarQube Static Analysis"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  print_separator
+  echo -e "  ${BOLD}STEP 1/2: SonarQube Static Analysis${NC}"
+  print_separator
   echo ""
-  log_info "Running SonarQube analysis... (30-60 seconds)"
-  echo ""
-  
+
   # Run SonarQube and capture exit code
   bash "$sonar_script" 2>&1
   local sonar_exit_code=$?
-  
-  echo ""
-  
+
   if [[ $sonar_exit_code -eq 0 ]]; then
-    # No errors - can proceed to AI review
     return 0
   elif [[ $sonar_exit_code -eq 1 ]]; then
-    # SonarQube found blocking errors - STOP HERE
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_error "🚫 COMMIT BLOCKED"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    log_error "SonarQube found errors that must be fixed first."
-    log_info "AI Review will NOT run until SonarQube issues are resolved."
+    print_separator
+    log_error "COMMIT BLOCKED - SonarQube found errors"
+    print_separator
     echo ""
-    echo "Next steps:"
-    echo "  1. Fix the SonarQube errors shown above"
-    echo "  2. Run 'git commit' again"
-    echo "  3. If SonarQube passes, AI Review will then check your code"
-    echo ""
-    echo "Or bypass: git commit --no-verify"
+    echo "  Fix the errors above, then commit again."
+    echo "  Bypass: git commit --no-verify"
     echo ""
     exit 1
   else
-    # SonarQube analysis failed to run (network issue, etc)
-    log_warn "⚠️  SonarQube analysis failed to run, continuing with AI review"
-    echo ""
+    log_warn "SonarQube failed to run, continuing with AI review"
   fi
 }
 
@@ -756,34 +732,26 @@ run_sonarqube_analysis() {
 main() {
   load_config
 
+  echo ""
+  echo -e "${BOLD}AI Review${NC} v$(cat "$CONFIG_DIR/version" 2>/dev/null || echo "1.0") - Pre-commit code review"
+  echo ""
+
   # Check if SonarQube is enabled locally
   if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-    echo -e "${BOLD}🔄 Combined Review (SonarQube → AI)${NC}"
-    echo ""
-    log_info "Step 1: SonarQube will check for errors first"
-    log_info "Step 2: AI Review will run only if SonarQube passes"
-    echo ""
-    
     # Step 1: Run SonarQube (blocks on errors, exits if failed)
     run_sonarqube_analysis
-    
-    # If we reach here, SonarQube passed (no errors)
+
+    # Step 2 header
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "🤖 STEP 2/2: AI-Powered Code Review"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-  else
-    echo -e "${BOLD}🤖 AI Review${NC}"
+    print_separator
+    echo -e "  ${BOLD}STEP 2/2: AI-Powered Code Review${NC}"
+    print_separator
     echo ""
   fi
 
-  # Step 2: Run AI Review (only runs if SonarQube passed or disabled)
-  log_info "Analyzing your changes..."
-  echo ""
-  
   get_staged_diff
   filter_ignored_files
+  format_diff
   detect_language
   call_ai_gateway
   display_results

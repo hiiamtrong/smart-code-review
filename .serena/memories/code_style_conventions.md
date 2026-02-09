@@ -4,7 +4,7 @@
 - Use `#!/usr/bin/env bash` shebang
 - Set `set -e` for error handling (exit on error)
 - Use meaningful variable names in UPPERCASE for environment variables
-- Echo informative messages with emoji prefixes (🔎, ➡️)
+- Echo informative messages with descriptive prefixes
 - Use `$(dirname "$0")` for relative script paths
 
 ## File Structure Patterns
@@ -24,6 +24,6 @@
 - Pipe outputs directly to reviewdog for processing
 
 ## Documentation Style
-- Use emoji in console output for better UX
+- Use descriptive text prefixes in console output (no emojis)
 - Comment complex bash operations
 - Maintain both English (README.md) and Vietnamese (REQUIREMENT.md) docs
