@@ -704,9 +704,9 @@ run_sonarqube_analysis() {
   print_separator
   echo ""
 
-  # Run SonarQube and capture exit code
-  bash "$sonar_script" 2>&1
-  local sonar_exit_code=$?
+  # Run SonarQube and capture exit code (must bypass set -e)
+  local sonar_exit_code=0
+  bash "$sonar_script" 2>&1 || sonar_exit_code=$?
 
   if [[ $sonar_exit_code -eq 0 ]]; then
     return 0
