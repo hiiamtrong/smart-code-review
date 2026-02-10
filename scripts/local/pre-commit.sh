@@ -704,10 +704,23 @@ run_sonarqube_analysis() {
   print_separator
   echo ""
 
-  # Run SonarQube and capture exit code (must bypass set -e)
-  # Let output print directly to console so users can see the issues
+  # Run SonarQube and capture output + exit code
+  # Use temp file for Windows Git Bash compatibility
+  local temp_output="$TEMP_DIR/sonar-output.txt"
   local sonar_exit_code=0
-  bash "$sonar_script" || sonar_exit_code=$?
+  
+  # Run and capture both output and exit code
+  if bash "$sonar_script" > "$temp_output" 2>&1; then
+    sonar_exit_code=0
+  else
+    sonar_exit_code=$?
+  fi
+  
+  # Display the captured output
+  if [[ -f "$temp_output" ]]; then
+    cat "$temp_output"
+    rm -f "$temp_output"
+  fi
 
   if [[ $sonar_exit_code -eq 0 ]]; then
     return 0
