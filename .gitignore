@@ -26,6 +26,16 @@ Thumbs.db
 ai-output.json
 reviewdog
 
+# SonarQube generated files
+.scannerwork/
+.sonar/
+.sonar_lock
+sonar-project.properties
+sonarqube-output.jsonl
+sonarqube-overview.txt
+report-task.txt
+sonar-report.json
+
 # Environment files
 .env
 .env.local

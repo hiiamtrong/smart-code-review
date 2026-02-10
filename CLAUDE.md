@@ -43,7 +43,7 @@ bash -n scripts/ai-review.sh
 
 - Use `#!/usr/bin/env bash` and `set -e` in shell scripts
 - Environment variables in UPPERCASE
-- Informative echo messages with emoji prefixes (🔎, ➡️)
+- Informative echo messages with descriptive prefixes
 - Error handling with proper exit codes
 - Use `$(dirname "$0")` for relative script paths
 

@@ -14,19 +14,19 @@ function Write-ColorOutput($ForegroundColor) {
 }
 
 function Write-Success($message) {
-    Write-Host "✅ $message" -ForegroundColor Green
+    Write-Host "[OK] $message" -ForegroundColor Green
 }
 
 function Write-Info($message) {
-    Write-Host "ℹ️  $message" -ForegroundColor Cyan
+    Write-Host "[INFO] $message" -ForegroundColor Cyan
 }
 
 function Write-Warning($message) {
-    Write-Host "⚠️  $message" -ForegroundColor Yellow
+    Write-Host "[WARN] $message" -ForegroundColor Yellow
 }
 
 function Write-Error($message) {
-    Write-Host "❌ $message" -ForegroundColor Red
+    Write-Host "[ERROR] $message" -ForegroundColor Red
 }
 
 # Paths
@@ -35,7 +35,7 @@ $HooksDir = "$ConfigDir\hooks"
 $BinDir = "$env:USERPROFILE\.local\bin"
 
 Write-Host ""
-Write-Host "🚀 AI Review Installer for Windows" -ForegroundColor Blue
+Write-Host "AI Review Installer for Windows" -ForegroundColor Blue
 Write-Host "===================================" -ForegroundColor Blue
 Write-Host ""
 
@@ -203,7 +203,7 @@ function Install-Scripts {
 # Configure credentials
 function Set-Configuration {
     Write-Host ""
-    Write-Host "⚙️  Configuration" -ForegroundColor Blue
+    Write-Host "Configuration" -ForegroundColor Blue
     Write-Host "Please provide your AI Gateway credentials:"
     Write-Host ""
 
@@ -274,7 +274,7 @@ function Set-Path {
 function Show-Success {
     Write-Host ""
     Write-Host "===================================" -ForegroundColor Green
-    Write-Host "✅ Installation complete!" -ForegroundColor Green
+    Write-Host "Installation complete!" -ForegroundColor Green
     Write-Host "===================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "Next steps:"

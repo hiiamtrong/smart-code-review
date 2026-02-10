@@ -44,7 +44,7 @@ if [[ ${#IGNORE_PATTERNS[@]} -eq 0 ]]; then
   exit 0
 fi
 
-echo "🔍 Found ${#IGNORE_PATTERNS[@]} ignore patterns in $IGNORE_FILE" >&2
+echo "Found ${#IGNORE_PATTERNS[@]} ignore patterns in $IGNORE_FILE" >&2
 
 # Parse diff and filter out ignored files
 OUTPUT_DIFF=""
@@ -64,7 +64,7 @@ while IFS= read -r line; do
         grep_pattern=$(echo "$pattern" | sed 's/\./\\./g' | sed 's/\*/.*/g')
         if echo "$CURRENT_FILE" | grep -qE "^${grep_pattern}$" || echo "$CURRENT_FILE" | grep -qE "${grep_pattern}"; then
           SHOULD_IGNORE=true
-          echo "⏭️  Ignoring: $CURRENT_FILE (matches: $pattern)" >&2
+          echo "Ignoring: $CURRENT_FILE (matches: $pattern)" >&2
           break
         fi
       done
@@ -100,7 +100,7 @@ if [[ -n "$CURRENT_FILE" && "$IN_FILE_BLOCK" == true ]]; then
     grep_pattern=$(echo "$pattern" | sed 's/\./\\./g' | sed 's/\*/.*/g')
     if echo "$CURRENT_FILE" | grep -qE "^${grep_pattern}$" || echo "$CURRENT_FILE" | grep -qE "${grep_pattern}"; then
       SHOULD_IGNORE=true
-      echo "⏭️  Ignoring: $CURRENT_FILE (matches: $pattern)" >&2
+      echo "Ignoring: $CURRENT_FILE (matches: $pattern)" >&2
       break
     fi
   done
