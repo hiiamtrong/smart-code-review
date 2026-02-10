@@ -705,8 +705,9 @@ run_sonarqube_analysis() {
   echo ""
 
   # Run SonarQube and capture exit code (must bypass set -e)
+  # Let output print directly to console so users can see the issues
   local sonar_exit_code=0
-  bash "$sonar_script" 2>&1 || sonar_exit_code=$?
+  bash "$sonar_script" || sonar_exit_code=$?
 
   if [[ $sonar_exit_code -eq 0 ]]; then
     return 0
@@ -716,7 +717,7 @@ run_sonarqube_analysis() {
     log_error "COMMIT BLOCKED - SonarQube found errors"
     print_separator
     echo ""
-    echo "  Fix the errors above, then commit again."
+    echo "  Fix the errors listed above, then commit again."
     echo "  Bypass: git commit --no-verify"
     echo ""
     exit 1
