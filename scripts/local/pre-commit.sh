@@ -709,6 +709,10 @@ run_sonarqube_analysis() {
   local temp_output="$TEMP_DIR/sonar-output.txt"
   local sonar_exit_code=0
   
+  # Debug: Show script path
+  echo "[DEBUG] Running: $sonar_script"
+  echo "[DEBUG] Output will be captured to: $temp_output"
+  
   # Run and capture both output and exit code
   if bash "$sonar_script" > "$temp_output" 2>&1; then
     sonar_exit_code=0
@@ -716,10 +720,18 @@ run_sonarqube_analysis() {
     sonar_exit_code=$?
   fi
   
+  echo "[DEBUG] SonarQube exit code: $sonar_exit_code"
+  
   # Display the captured output
   if [[ -f "$temp_output" ]]; then
+    local file_size=$(wc -c < "$temp_output" 2>/dev/null || echo "0")
+    echo "[DEBUG] Output file size: $file_size bytes"
+    echo "[DEBUG] ===== SonarQube Output Start ====="
     cat "$temp_output"
+    echo "[DEBUG] ===== SonarQube Output End ====="
     rm -f "$temp_output"
+  else
+    echo "[DEBUG] Output file not found!"
   fi
 
   if [[ $sonar_exit_code -eq 0 ]]; then
