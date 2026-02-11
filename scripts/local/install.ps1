@@ -142,11 +142,34 @@ function Install-Scripts {
     if (Test-Path "$ScriptDir\ai-review") {
         Copy-Item "$ScriptDir\ai-review" "$BinDir\ai-review" -Force
         Copy-Item "$ScriptDir\pre-commit.sh" "$HooksDir\pre-commit.sh" -Force
+        Copy-Item "$ScriptDir\enable-local-sonarqube.sh" "$HooksDir\enable-local-sonarqube.sh" -Force
+        
+        # Copy SonarQube scripts from parent scripts directory
+        $ParentScriptDir = Split-Path -Parent $ScriptDir
+        if (Test-Path "$ParentScriptDir\sonarqube-review.sh") {
+            Copy-Item "$ParentScriptDir\sonarqube-review.sh" "$HooksDir\sonarqube-review.sh" -Force
+        }
+        if (Test-Path "$ParentScriptDir\showlinenum.awk") {
+            Copy-Item "$ParentScriptDir\showlinenum.awk" "$HooksDir\showlinenum.awk" -Force
+        }
     } else {
         # Download from remote
         $RepoUrl = "https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main"
         Invoke-WebRequest -Uri "$RepoUrl/scripts/local/ai-review" -OutFile "$BinDir\ai-review"
         Invoke-WebRequest -Uri "$RepoUrl/scripts/local/pre-commit.sh" -OutFile "$HooksDir\pre-commit.sh"
+        Invoke-WebRequest -Uri "$RepoUrl/scripts/local/enable-local-sonarqube.sh" -OutFile "$HooksDir\enable-local-sonarqube.sh"
+        
+        # Download SonarQube scripts (optional, may not exist in older versions)
+        try {
+            Invoke-WebRequest -Uri "$RepoUrl/scripts/sonarqube-review.sh" -OutFile "$HooksDir\sonarqube-review.sh" -ErrorAction SilentlyContinue
+        } catch {
+            Write-Warning "sonarqube-review.sh not available from remote"
+        }
+        try {
+            Invoke-WebRequest -Uri "$RepoUrl/scripts/showlinenum.awk" -OutFile "$HooksDir\showlinenum.awk" -ErrorAction SilentlyContinue
+        } catch {
+            Write-Warning "showlinenum.awk not available from remote"
+        }
     }
 
     # Create Windows wrapper batch file
@@ -165,8 +188,16 @@ function Install-Scripts {
 
     Set-Content -Path "$BinDir\ai-review.cmd" -Value $wrapperContent
 
+    # Create Windows wrapper for enable-local-sonarqube script
+    $sonarWrapperContent = @"
+@echo off
+"$bashPath" "%USERPROFILE%\.config\ai-review\hooks\enable-local-sonarqube.sh" %*
+"@
+    Set-Content -Path "$BinDir\enable-local-sonarqube.cmd" -Value $sonarWrapperContent
+
     Write-Success "Installed ai-review CLI"
     Write-Success "Installed hook template"
+    Write-Success "Installed SonarQube integration scripts"
 }
 
 # Configure credentials
@@ -252,12 +283,13 @@ function Show-Success {
     Write-Host "  3. Run: ai-review install"
     Write-Host ""
     Write-Host "Available commands:"
-    Write-Host "  ai-review install    - Install hook in current repo"
-    Write-Host "  ai-review uninstall  - Remove hook from current repo"
-    Write-Host "  ai-review config     - View/edit configuration"
-    Write-Host "  ai-review status     - Check installation status"
-    Write-Host "  ai-review update     - Update to latest version"
-    Write-Host "  ai-review help       - Show help"
+    Write-Host "  ai-review install              - Install hook in current repo"
+    Write-Host "  ai-review uninstall            - Remove hook from current repo"
+    Write-Host "  ai-review config               - View/edit configuration"
+    Write-Host "  ai-review status               - Check installation status"
+    Write-Host "  ai-review update               - Update to latest version"
+    Write-Host "  ai-review help                 - Show help"
+    Write-Host "  enable-local-sonarqube         - Enable/disable SonarQube locally"
     Write-Host ""
 }
 
