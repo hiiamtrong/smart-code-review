@@ -156,6 +156,9 @@ Add these secrets to your repository (Settings → Secrets and variables → Act
 - git
 - curl
 - jq
+
+# When using SonarQube locally (optional)
+- Java 11+ (SonarQube scanner requirement)
 ```
 
 ### Testing Locally
@@ -190,16 +193,24 @@ bash scripts/local/install.sh
 curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.sh | bash
 ```
 
-**Windows (PowerShell):**
+**Windows:**
 ```powershell
-# Option 1: Run installer directly from repo
-git clone https://github.com/hiiamtrong/smart-code-review.git
-cd smart-code-review
+# Option 1: Run installer from repo (PowerShell)
+cd C:\path\to\smart-code-review
 powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
+```
 
+```bash
+# From Git Bash - use forward slashes for paths
+powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
+```
+
+```powershell
 # Option 2: One-line install (when published)
 irm https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.ps1 | iex
 ```
+
+**Windows + SonarQube:** Java 11+ is required. Install via `winget install EclipseAdoptium.Temurin.18.JDK` or `choco install temurin18`. See [SETUP_GUIDE.md](SETUP_GUIDE.md) for details.
 
 The installer will:
 1. Install required dependencies (jq)
@@ -218,13 +229,20 @@ By default, local pre-commit hooks run **AI review only** (fast, 2-10 seconds).
 To optionally enable SonarQube locally (slower, 30-60 seconds):
 
 ```bash
-# Enable SonarQube in pre-commit hooks
+# macOS/Linux: Enable SonarQube in pre-commit hooks
 bash scripts/local/enable-local-sonarqube.sh
-
-# Follow prompts to enter:
-# - SonarQube URL: https://sonarqube.sotatek.works
-# - SonarQube Token: (from dashboard)
 ```
+
+```bash
+# Windows (Git Bash): If command not found, run script directly
+bash "$HOME/.config/ai-review/hooks/enable-local-sonarqube.sh"
+```
+
+Follow prompts to enter:
+- SonarQube URL: https://sonarqube.sotatek.works
+- SonarQube Token: (from dashboard)
+
+**Windows:** Requires Java 11+ installed (see [SETUP_GUIDE.md](SETUP_GUIDE.md)).
 
 **Configuration:**
 ```bash
@@ -234,9 +252,16 @@ ai-review config
 # Disable SonarQube locally (back to fast mode)
 ai-review config set ENABLE_SONARQUBE_LOCAL false
 
+# Only report issues on lines you changed (default: true)
+ai-review config set SONAR_FILTER_CHANGED_LINES_ONLY true
+
 # Or run the script again and choose "Disable"
 bash scripts/local/enable-local-sonarqube.sh
 ```
+
+**Changed Lines Filtering:** By default, SonarQube only reports issues on the exact lines you changed. Issues in unchanged code (existing/legacy issues) are filtered out and won't block your commit. This ensures you're only responsible for fixing issues in your changes, not pre-existing technical debt.
+
+**Automatic Cleanup:** Temporary SonarQube files are automatically removed after each commit.
 
 ### Enable Hook in a Repository
 
@@ -323,6 +348,14 @@ ai-review uninstall
 # Remove completely (delete config and CLI)
 rm -rf ~/.config/ai-review ~/.local/bin/ai-review
 ```
+
+### Windows Troubleshooting
+
+- **Java not found:** Install Java 11+ (`winget install EclipseAdoptium.Temurin.18.JDK` or `choco install temurin18`). Restart terminal. Add to PATH if needed.
+- **enable-local-sonarqube not found:** Run `bash "$HOME/.config/ai-review/hooks/enable-local-sonarqube.sh"`
+- **Path errors in Git Bash:** Use forward slashes (e.g. `scripts/local/install.ps1`)
+
+See [SETUP_GUIDE.md](SETUP_GUIDE.md) for full Windows setup and troubleshooting.
 
 ## AI Gateway Integration
 

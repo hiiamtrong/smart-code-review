@@ -8,22 +8,94 @@ Quick guide for setting up AI + SonarQube code review on your local machine.
 
 Before starting, make sure you have:
 
-- Git installed
-- A SonarQube account on [https://sonarqube.sotatek.works/](https://sonarqube.sotatek.works/)
-- Terminal/Command Line access
+- **Git** installed (includes Git Bash on Windows)
+- **A SonarQube account** on [https://sonarqube.sotatek.works/](https://sonarqube.sotatek.works/)
+- **Terminal/Command Line** access
+- **Java 11+** (required for SonarQube scanner when using local SonarQube)
+
+---
+
+## Step 0: Install Java (required for SonarQube)
+
+SonarQube scanner requires Java 11 or higher on all platforms. Install before enabling SonarQube.
+
+### Linux
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install openjdk-18-jdk
+
+# Fedora/RHEL
+sudo dnf install java-18-openjdk-devel
+
+# Arch
+sudo pacman -S jdk18-openjdk
+```
+
+### macOS
+
+```bash
+brew install openjdk@18
+# Follow the post-install instructions to add Java to your PATH
+```
+
+### Windows
+
+**Option A – Winget:**
+```powershell
+winget install EclipseAdoptium.Temurin.18.JDK
+# or
+winget install Microsoft.OpenJDK.18
+```
+
+**Option B – Chocolatey:**
+```powershell
+choco install temurin18
+```
+
+**Option C – Manual:** Download from [Adoptium](https://adoptium.net/temurin/releases/?version=18&os=windows&arch=x64) and run the installer. During setup, enable **"Add to PATH"**.
+
+**Note:** If `java` is not found after install, add the Java `bin` folder to your PATH manually (System Properties → Environment Variables → Path). The typical path is:
+`C:\Program Files\Eclipse Adoptium\jdk-18.x.x-hotspot\bin`
+
+### Verify installation
+
+```bash
+# Restart your terminal first, then:
+java -version
+```
 
 ---
 
 ## Step 1: Install AI Review Tool
 
-Open your terminal and run:
+### macOS / Linux / WSL
 
 ```bash
 # Download and install the ai-review CLI
 curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.sh | bash
 ```
 
-This will install the `ai-review` command to your system.
+### Windows
+
+**From PowerShell (recommended):**
+```powershell
+cd C:\path\to\smart-code-review
+powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
+```
+
+**From Git Bash:** Use forward slashes for the path:
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
+```
+
+**One-line install (when published):**
+```powershell
+irm https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.ps1 | iex
+```
+
+This will install the `ai-review` command and add it to your PATH. Restart your terminal after installation.
 
 ---
 
@@ -196,7 +268,14 @@ ai-review config SONAR_TOKEN <your-new-token>
 
 # Disable hotspot blocking
 ai-review config SONAR_BLOCK_ON_HOTSPOTS false
+
+# Only report issues on changed lines (default: true)
+ai-review config SONAR_FILTER_CHANGED_LINES_ONLY true
 ```
+
+**Note:** By default, SonarQube only reports issues on lines you changed in this commit. Issues in unchanged lines (existing code) are filtered out and won't block your commit. To see all issues in changed files (old behavior), set `SONAR_FILTER_CHANGED_LINES_ONLY` to `false`.
+
+**Automatic Cleanup:** The hook automatically cleans up temporary SonarQube files (`.scannerwork/`, `sonar-project.properties`, etc.) after each commit, whether it succeeds or is blocked. Your project directory stays clean.
 
 ### Update to Latest Version
 
@@ -209,6 +288,18 @@ ai-review update
 ```bash
 cd /path/to/your/project
 ai-review uninstall
+```
+
+### Windows: Running enable-local-sonarqube
+
+On Windows, the `enable-local-sonarqube` command may not be found in Git Bash. Use one of these:
+
+```bash
+# Option 1: Run the script directly (Git Bash)
+bash "$HOME/.config/ai-review/hooks/enable-local-sonarqube.sh"
+
+# Option 2: Use PowerShell or CMD (if PATH is set)
+enable-local-sonarqube
 ```
 
 ---
@@ -311,18 +402,58 @@ git commit -m "message"
    ai-review install
    ```
 
+### Issue: "SonarQube analysis failed" (no error details shown)
+
+**Root Cause:** Usually Java is not installed or not in PATH. The SonarQube scanner requires Java 11+.
+
+**Solution:**
+1. Install Java (see Step 0 above)
+2. Restart your terminal after installing
+3. Verify: `java -version`
+4. To see the full error, run the script manually:
+   ```bash
+   bash "$HOME/.config/ai-review/hooks/sonarqube-review.sh"
+   ```
+
+### Issue: "java: command not found" on Windows
+
+**Solution:**
+1. Install Java (see Step 0 above)
+2. Close all terminals and open a new one
+3. If still not found, add Java to PATH manually:
+   - System Properties → Environment Variables → Path
+   - Add: `C:\Program Files\Eclipse Adoptium\jdk-18.x.x-hotspot\bin` (match your version)
+4. Or temporarily in Git Bash: `export PATH="/c/Program Files/Eclipse Adoptium/jdk-18.0.2.101-hotspot/bin:$PATH"`
+
+### Issue: "enable-local-sonarqube: command not found" (Windows)
+
+**Solution:** Run the script directly:
+```bash
+bash "$HOME/.config/ai-review/hooks/enable-local-sonarqube.sh"
+```
+
 ---
 
 ## What Gets Scanned?
 
-### On Main/Master/Develop Branch
-- **Only staged files** (what you're about to commit)
+### Files Scanned
 
-### On Feature Branch
-- **All files changed from base branch** + staged files
+- **On Main/Master/Develop Branch:** Only staged files (what you're about to commit)
+- **On Feature Branch:** All files changed from base branch + staged files
+- **No Changed Files:** Entire project (full scan)
 
-### No Changed Files
-- **Entire project** (full scan)
+### Issues Reported
+
+**By default, only issues on lines you changed are reported.** This means:
+- You edit line 50 in `file.js` → Issue on line 50 is reported
+- Issue already exists on line 10 (unchanged) → Filtered out, not reported
+
+This ensures you're only responsible for fixing issues in your changes, not pre-existing technical debt.
+
+To see all issues in changed files (including unchanged lines), set:
+```bash
+ai-review config SONAR_FILTER_CHANGED_LINES_ONLY false
+```
 
 ---
 

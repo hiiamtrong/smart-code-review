@@ -89,6 +89,7 @@ load_config() {
   AI_PROVIDER="${AI_PROVIDER:-google}"
   ENABLE_SONARQUBE_LOCAL="${ENABLE_SONARQUBE_LOCAL:-false}"
   SONAR_BLOCK_ON_HOTSPOTS="${SONAR_BLOCK_ON_HOTSPOTS:-true}"
+  SONAR_FILTER_CHANGED_LINES_ONLY="${SONAR_FILTER_CHANGED_LINES_ONLY:-true}"
   
   # Load project-specific config from git config (overrides global config)
   local project_key=$(git config --local aireview.sonarProjectKey 2>/dev/null)
@@ -689,6 +690,7 @@ run_sonarqube_analysis() {
   export SONAR_TOKEN
   export SONAR_PROJECT_KEY
   export SONAR_BLOCK_ON_HOTSPOTS
+  export SONAR_FILTER_CHANGED_LINES_ONLY
   export SONAR_QUIET="true"
 
   # Find the sonarqube-review.sh script in hooks directory
@@ -705,8 +707,10 @@ run_sonarqube_analysis() {
   echo ""
 
   # Run SonarQube and capture output + exit code
-  # Use temp file for Windows Git Bash compatibility
-  local temp_output="$TEMP_DIR/sonar-output.txt"
+  # Use temp file for Windows Git Bash compatibility (TEMP_DIR must be set before use)
+  local temp_dir="${CONFIG_DIR}/temp"
+  mkdir -p "$temp_dir"
+  local temp_output="${temp_dir}/sonar-output.txt"
   local sonar_exit_code=0
   
   # Debug: Show script path
@@ -719,19 +723,11 @@ run_sonarqube_analysis() {
   else
     sonar_exit_code=$?
   fi
-  
-  echo "[DEBUG] SonarQube exit code: $sonar_exit_code"
-  
-  # Display the captured output
+
+  # Display the captured output (fixes Windows: TEMP_DIR was undefined, so output went to wrong path)
   if [[ -f "$temp_output" ]]; then
-    local file_size=$(wc -c < "$temp_output" 2>/dev/null || echo "0")
-    echo "[DEBUG] Output file size: $file_size bytes"
-    echo "[DEBUG] ===== SonarQube Output Start ====="
     cat "$temp_output"
-    echo "[DEBUG] ===== SonarQube Output End ====="
     rm -f "$temp_output"
-  else
-    echo "[DEBUG] Output file not found!"
   fi
 
   if [[ $sonar_exit_code -eq 0 ]]; then
@@ -752,10 +748,63 @@ run_sonarqube_analysis() {
 }
 
 # ============================================
+# Cleanup Temporary Files
+# ============================================
+
+cleanup_temp_files() {
+  # Move output files to temp directory (not in project)
+  local temp_dir="$CONFIG_DIR/temp"
+  mkdir -p "$temp_dir" 2>/dev/null || true
+  
+  # List of temporary files to clean up
+  local temp_files=(
+    "ai-output.jsonl"
+    "sonarqube-output.jsonl"
+    "combined-output.jsonl"
+    "ai-overview.txt"
+    "sonarqube-overview.txt"
+    "combined-overview.txt"
+  )
+  
+  for file in "${temp_files[@]}"; do
+    if [[ -f "$file" ]]; then
+      mv "$file" "$temp_dir/" 2>/dev/null || rm -f "$file" 2>/dev/null || true
+    fi
+  done
+  
+  # Comprehensive cleanup of ALL SonarQube-generated files
+  rm -rf .scannerwork 2>/dev/null || true
+  rm -rf .sonar 2>/dev/null || true
+  rm -f .sonar_lock 2>/dev/null || true
+  rm -f report-task.txt 2>/dev/null || true
+  rm -f sonar-report.json 2>/dev/null || true
+  
+  # Clean up any .sonar* files in current directory
+  find . -maxdepth 1 -name ".sonar*" -type f -delete 2>/dev/null || true
+  
+  # Clean up auto-generated sonar-project.properties (has "auto-generated" comment)
+  if [[ -f "sonar-project.properties" ]]; then
+    if grep -q "auto-generated" "sonar-project.properties" 2>/dev/null; then
+      rm -f sonar-project.properties 2>/dev/null || true
+    fi
+  fi
+  
+  # Clean up .sonarignore if it was auto-created (empty or only comments)
+  if [[ -f ".sonarignore" ]]; then
+    if ! grep -v "^#" ".sonarignore" | grep -q "[^[:space:]]" 2>/dev/null; then
+      rm -f .sonarignore 2>/dev/null || true
+    fi
+  fi
+}
+
+# ============================================
 # Main
 # ============================================
 
 main() {
+  # Ensure cleanup runs even if script exits early
+  trap cleanup_temp_files EXIT
+  
   load_config
 
   echo ""
@@ -781,50 +830,6 @@ main() {
   detect_language
   call_ai_gateway
   display_results
-  
-  # Cleanup: Remove any temporary output files from project directory
-  cleanup_temp_files
-}
-
-# ============================================
-# Cleanup Temporary Files
-# ============================================
-
-cleanup_temp_files() {
-  # Move output files to temp directory (not in project)
-  TEMP_DIR="$CONFIG_DIR/temp"
-  mkdir -p "$TEMP_DIR"
-  
-  # List of temporary files to clean up
-  local temp_files=(
-    "ai-output.jsonl"
-    "sonarqube-output.jsonl"
-    "combined-output.jsonl"
-    "ai-overview.txt"
-    "sonarqube-overview.txt"
-    "combined-overview.txt"
-  )
-  
-  for file in "${temp_files[@]}"; do
-    if [[ -f "$file" ]]; then
-      mv "$file" "$TEMP_DIR/" 2>/dev/null || rm -f "$file" 2>/dev/null
-    fi
-  done
-  
-  # Comprehensive cleanup of ALL SonarQube-generated files
-  rm -rf .scannerwork 2>/dev/null || true
-  rm -rf .sonar 2>/dev/null || true
-  rm -f .sonar_lock 2>/dev/null || true
-  rm -f report-task.txt 2>/dev/null || true
-  rm -f sonar-report.json 2>/dev/null || true
-  
-  # Clean up any .sonar* files in current directory
-  find . -maxdepth 1 -name ".sonar*" -type f -delete 2>/dev/null || true
-  
-  # Clean up auto-generated sonar-project.properties
-  if [[ -f "sonar-project.properties" ]] && grep -q "auto-generated" "sonar-project.properties" 2>/dev/null; then
-    rm -f sonar-project.properties 2>/dev/null || true
-  fi
 }
 
 main

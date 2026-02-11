@@ -71,6 +71,7 @@ SONAR_PROJECT_KEY="${SONAR_PROJECT_KEY:-}"
 SONAR_PROJECT_NAME="${SONAR_PROJECT_NAME:-$(basename "$(git rev-parse --show-toplevel)")}"
 SONAR_PROJECT_VERSION="${SONAR_PROJECT_VERSION:-1.0}"
 SONAR_SOURCES="${SONAR_SOURCES:-.}"
+SONAR_FILTER_CHANGED_LINES_ONLY="${SONAR_FILTER_CHANGED_LINES_ONLY:-true}"
 
 # Default exclusions
 DEFAULT_EXCLUSIONS="**/node_modules/**,**/dist/**,**/build/**,**/target/**,**/vendor/**,**/*.test.js,**/*.spec.ts,**/*.test.ts,**/*.spec.js"
@@ -353,7 +354,6 @@ ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" \
 
 if [[ -z "$ISSUES_JSON" || "$ISSUES_JSON" == "null" ]]; then
   log_warn "Could not fetch issues from SonarQube"
-  log_info "Creating empty report..."
   cat > sonarqube-output.jsonl << EOF
 {
   "source": {"name": "sonarqube", "url": "$SONAR_HOST_URL"},
@@ -400,6 +400,124 @@ DIAGNOSTICS=$(echo "$ISSUES_JSON" | jq -r '[.issues[] | {
   },
   suggestions: []
 }]' 2>/dev/null || echo "[]")
+
+# ============================================
+# Filter Issues by Changed Lines Only
+# ============================================
+
+# Get changed line ranges from git diff
+get_changed_lines() {
+  local diff_command=""
+  
+  # Use same logic as file detection
+  if [[ "$CURRENT_BRANCH" == "$BASE_BRANCH" ]]; then
+    # On base branch: staged changes only
+    diff_command="git diff --cached -U0"
+  else
+    # On feature branch: all changes from base + staged
+    if [[ -n "$BASE_BRANCH" ]]; then
+      diff_command="git diff $BASE_BRANCH...HEAD -U0"
+    else
+      diff_command="git diff --cached -U0"
+    fi
+  fi
+  
+  # Parse diff to extract changed lines
+  # Format: file|start_line|line_count (one per hunk)
+  $diff_command | awk '
+    /^diff --git/ {
+      # Extract filename from "diff --git a/path b/path"
+      sub(/^diff --git a\//, "")
+      sub(/ b\/.*$/, "")
+      current_file = $0
+    }
+    /^@@/ {
+      # Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
+      # We care about +new_start,new_count
+      match($0, /\+([0-9]+)(,([0-9]+))?/, arr)
+      start_line = arr[1]
+      line_count = (arr[3] != "" ? arr[3] : 1)
+      
+      if (current_file != "" && start_line != "") {
+        print current_file "|" start_line "|" line_count
+      }
+    }
+  '
+}
+
+# Filter diagnostics to only include issues on changed lines
+filter_diagnostics_by_changed_lines() {
+  local diagnostics="$1"
+  local changed_lines="$2"
+  
+  # If no changed lines info or diagnostics is empty, return as-is
+  if [[ -z "$changed_lines" || "$diagnostics" == "[]" ]]; then
+    echo "$diagnostics"
+    return
+  fi
+  
+  # Build ranges file: file|start|end (one line per hunk)
+  local temp_ranges=$(mktemp)
+  echo "$changed_lines" | while IFS='|' read -r file start count; do
+    end=$((start + count - 1))
+    echo "$file|$start|$end"
+  done > "$temp_ranges"
+  
+  # Filter using bash: iterate through issues and check if in range
+  local result="[]"
+  local issues_array=$(echo "$diagnostics" | jq -c '.[]' 2>/dev/null)
+  
+  if [[ -n "$issues_array" ]]; then
+    local filtered_items=""
+    
+    while IFS= read -r issue; do
+      [[ -z "$issue" ]] && continue
+      
+      local issue_path=$(echo "$issue" | jq -r '.location.path')
+      local issue_line=$(echo "$issue" | jq -r '.location.range.start.line')
+      
+      # Check if this issue is in any changed line range
+      local in_range=false
+      while IFS='|' read -r file start end; do
+        if [[ "$file" == "$issue_path" ]] && [[ "$issue_line" -ge "$start" ]] && [[ "$issue_line" -le "$end" ]]; then
+          in_range=true
+          break
+        fi
+      done < "$temp_ranges"
+      
+      # Add to filtered list if in range
+      if [[ "$in_range" == "true" ]]; then
+        if [[ -z "$filtered_items" ]]; then
+          filtered_items="$issue"
+        else
+          filtered_items="$filtered_items,$issue"
+        fi
+      fi
+    done <<< "$issues_array"
+    
+    if [[ -n "$filtered_items" ]]; then
+      result="[$filtered_items]"
+    fi
+  fi
+  
+  rm -f "$temp_ranges"
+  echo "$result"
+}
+
+# Apply filtering (only if enabled)
+if [[ "$SONAR_FILTER_CHANGED_LINES_ONLY" == "true" ]]; then
+  CHANGED_LINES=$(get_changed_lines)
+  
+  if [[ -n "$CHANGED_LINES" ]]; then
+    ORIGINAL_COUNT=$(echo "$DIAGNOSTICS" | jq 'length' 2>/dev/null || echo "0")
+    DIAGNOSTICS=$(filter_diagnostics_by_changed_lines "$DIAGNOSTICS" "$CHANGED_LINES")
+    FILTERED_COUNT=$(echo "$DIAGNOSTICS" | jq 'length' 2>/dev/null || echo "0")
+    
+    if [[ "$ORIGINAL_COUNT" -gt "$FILTERED_COUNT" ]]; then
+      log_info "Filtered out $(($ORIGINAL_COUNT - $FILTERED_COUNT)) issue(s) from unchanged lines"
+    fi
+  fi
+fi
 
 # Create final reviewdog format
 cat > sonarqube-output.jsonl << EOF
