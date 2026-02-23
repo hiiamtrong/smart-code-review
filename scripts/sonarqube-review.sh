@@ -369,33 +369,47 @@ else
   fi
 fi
 
-# Only show real errors (not Java version warnings)
-grep -E "(ERROR|FAIL)" "$SCANNER_LOG" | grep -v "Java 17 scanner" || true
+# Show scanner output for debugging
+if [[ $SCANNER_EXIT -ne 0 ]]; then
+  log_error "SonarQube analysis failed (exit code: $SCANNER_EXIT)"
+  log_error "Scanner log:"
+  # Show last 30 lines of log for context
+  tail -30 "$SCANNER_LOG" 2>/dev/null | while IFS= read -r line; do
+    echo "  $line"
+  done
+  rm -f "$SCANNER_LOG"
+  exit 1
+else
+  # Show warnings/errors even on success
+  grep -E "(ERROR|WARN|FAIL)" "$SCANNER_LOG" | grep -v "Java 17 scanner" | head -10 || true
+fi
 
 rm -f "$SCANNER_LOG"
-
-if [[ $SCANNER_EXIT -ne 0 ]]; then
-  log_error "SonarQube analysis failed"
-  exit 1
-fi
 
 # ============================================
 # Wait for Analysis Results
 # ============================================
-TASK_ID=$(grep 'ceTaskId=' "$HOME/.config/ai-review/temp/report-task.txt" 2>/dev/null | sed 's/.*ceTaskId=//' | tr -d '[:space:]' || true)
+REPORT_TASK_FILE="$HOME/.config/ai-review/temp/report-task.txt"
+TASK_ID=$(grep 'ceTaskId=' "$REPORT_TASK_FILE" 2>/dev/null | sed 's/.*ceTaskId=//' | tr -d '[:space:]' || true)
 MAX_WAIT=60
 WAIT_ELAPSED=0
 if [[ -n "$TASK_ID" ]]; then
+  log_info "Waiting for analysis results (task: ${TASK_ID:0:12}...)"
   while [[ $WAIT_ELAPSED -lt $MAX_WAIT ]]; do
     TASK_STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$TASK_ID" | jq -r '.task.status // ""' 2>/dev/null)
     if [[ "$TASK_STATUS" == "SUCCESS" || "$TASK_STATUS" == "FAILED" || "$TASK_STATUS" == "CANCELED" ]]; then
+      log_info "Analysis task: $TASK_STATUS (${WAIT_ELAPSED}s)"
       break
     fi
     sleep 2
     WAIT_ELAPSED=$((WAIT_ELAPSED + 2))
   done
+  if [[ $WAIT_ELAPSED -ge $MAX_WAIT ]]; then
+    log_warn "Timed out waiting for analysis results (${MAX_WAIT}s)"
+  fi
 else
-  # Fallback: wait a few seconds if task ID not found
+  log_info "No task ID found in report, waiting 5s for results..."
+  [[ -f "$REPORT_TASK_FILE" ]] && log_info "Report file content: $(cat "$REPORT_TASK_FILE" 2>/dev/null | head -5)" || log_warn "Report file not found: $REPORT_TASK_FILE"
   sleep 5
 fi
 
@@ -407,8 +421,9 @@ fi
 ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" \
   "$SONAR_HOST_URL/api/issues/search?componentKeys=$SONAR_PROJECT_KEY&resolved=false&ps=500" || echo "")
 
+log_info "Fetching issues from API..."
 if [[ -z "$ISSUES_JSON" || "$ISSUES_JSON" == "null" ]]; then
-  log_warn "Could not fetch issues from SonarQube"
+  log_warn "Could not fetch issues from SonarQube (empty response)"
   cat > sonarqube-output.jsonl << EOF
 {
   "source": {"name": "sonarqube", "url": "$SONAR_HOST_URL"},
