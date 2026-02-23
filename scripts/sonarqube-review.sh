@@ -382,7 +382,14 @@ rm -f "$SCANNER_LOG"
 # ============================================
 # Wait for Analysis Results
 # ============================================
-REPORT_TASK_FILE="$HOME/.config/ai-review/temp/report-task.txt"
+# Find report-task.txt (scanner writes to .scannerwork/ in project dir)
+REPORT_TASK_FILE=""
+for candidate in ".scannerwork/report-task.txt" "report-task.txt" "$HOME/.config/ai-review/temp/report-task.txt"; do
+  if [[ -f "$candidate" ]]; then
+    REPORT_TASK_FILE="$candidate"
+    break
+  fi
+done
 TASK_ID=$(grep 'ceTaskId=' "$REPORT_TASK_FILE" 2>/dev/null | sed 's/.*ceTaskId=//' | tr -d '[:space:]' || true)
 MAX_WAIT=60
 WAIT_ELAPSED=0
@@ -401,8 +408,11 @@ if [[ -n "$TASK_ID" ]]; then
     log_warn "Timed out waiting for analysis results (${MAX_WAIT}s)"
   fi
 else
-  log_info "No task ID found in report, waiting 5s for results..."
-  [[ -f "$REPORT_TASK_FILE" ]] && log_info "Report file content: $(cat "$REPORT_TASK_FILE" 2>/dev/null | head -5)" || log_warn "Report file not found: $REPORT_TASK_FILE"
+  if [[ -n "$REPORT_TASK_FILE" ]]; then
+    log_info "Report found at: $REPORT_TASK_FILE but no task ID"
+  else
+    log_info "No report-task.txt found, waiting 5s for results..."
+  fi
   sleep 5
 fi
 
