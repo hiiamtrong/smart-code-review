@@ -354,42 +354,12 @@ fi
 echo "Running SonarQube scanner... (this may take 30-60 seconds)"
 echo ""
 
-# Run with timeout to prevent hanging forever (2 minutes max)
-# Note: Windows Git Bash has timeout.exe (a delay command, NOT GNU timeout)
-# Only use timeout on Linux where GNU coreutils timeout is available
-USE_TIMEOUT=false
-if [[ "$OSTYPE" == "linux-gnu"* ]] && command -v timeout &> /dev/null; then
-  USE_TIMEOUT=true
-fi
-
-if [[ "$USE_TIMEOUT" == "true" ]]; then
-  # Linux with GNU timeout
-  if timeout 120 $SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1; then
-    SCANNER_EXIT=0
-  else
-    SCANNER_EXIT=$?
-    if [[ $SCANNER_EXIT -eq 124 ]]; then
-      echo ""
-      log_error "SonarQube scanner timed out after 2 minutes"
-      echo "This might indicate:"
-      echo "  - Network issues connecting to SonarQube server"
-      echo "  - Too many files to scan"
-      echo "  - SonarQube server is slow/unresponsive"
-      echo ""
-      echo "Suggestion: Disable local SonarQube and use CI/CD instead"
-      echo "  Run: ai-review config set ENABLE_SONARQUBE_LOCAL false"
-      rm -f "$SCANNER_LOG"
-      exit 1
-    fi
-  fi
+# Run scanner - no timeout wrapper (timeout.exe on Windows is incompatible)
+log_info "Running scanner (press Ctrl+C to cancel)..."
+if $SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1; then
+  SCANNER_EXIT=0
 else
-  # No timeout command available (macOS/Windows) - run directly
-  log_info "Running scanner (press Ctrl+C to cancel)..."
-  if $SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1; then
-    SCANNER_EXIT=0
-  else
-    SCANNER_EXIT=$?
-  fi
+  SCANNER_EXIT=$?
 fi
 
 # Show scanner output for debugging
