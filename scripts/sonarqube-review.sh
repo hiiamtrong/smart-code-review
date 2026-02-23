@@ -165,18 +165,38 @@ else
 
   if [[ ! -d "$SCANNER_DIR" ]]; then
     log_info "Downloading SonarQube Scanner ($SCANNER_ZIP)..."
-    curl -sSL "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCANNER_ZIP}" -o scanner.zip
+    local download_url="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCANNER_ZIP}"
+    curl -sSL "$download_url" -o scanner.zip
 
-    # Use safe_unzip if available, otherwise try unzip then PowerShell fallback
-    if type safe_unzip &>/dev/null; then
-      safe_unzip scanner.zip "$HOME/.sonar"
-    elif command -v unzip &>/dev/null; then
-      unzip -q scanner.zip
-    elif command -v powershell.exe &>/dev/null; then
-      log_info "Using PowerShell to extract scanner..."
+    # Verify download is a valid zip (zip files start with PK magic bytes)
+    if [[ ! -f scanner.zip ]] || [[ $(wc -c < scanner.zip) -lt 1000 ]]; then
+      log_error "Download failed or file too small"
+      rm -f scanner.zip
+      cd - > /dev/null
+      exit 1
+    fi
+
+    local zip_header
+    zip_header=$(head -c 2 scanner.zip 2>/dev/null || true)
+    if [[ "$zip_header" != "PK" ]]; then
+      log_error "Downloaded file is not a valid zip (possibly HTML error page)"
+      log_error "URL: $download_url"
+      rm -f scanner.zip
+      cd - > /dev/null
+      exit 1
+    fi
+
+    # On Windows, prefer PowerShell Expand-Archive (more reliable than Git Bash unzip)
+    if command -v powershell.exe &>/dev/null; then
+      log_info "Extracting scanner..."
+      local win_zip win_dest
       win_zip=$(cygpath -w "$HOME/.sonar/scanner.zip" 2>/dev/null || echo "$HOME/.sonar/scanner.zip")
       win_dest=$(cygpath -w "$HOME/.sonar" 2>/dev/null || echo "$HOME/.sonar")
       powershell.exe -NoProfile -Command "Expand-Archive -Path '$win_zip' -DestinationPath '$win_dest' -Force"
+    elif type safe_unzip &>/dev/null; then
+      safe_unzip scanner.zip "$HOME/.sonar"
+    elif command -v unzip &>/dev/null; then
+      unzip -q scanner.zip
     else
       log_error "Cannot extract scanner: neither unzip nor PowerShell available"
       rm -f scanner.zip

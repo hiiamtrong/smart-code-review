@@ -65,27 +65,7 @@ irm https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/
 
 > Restart terminal sau khi cài.
 
-### Bước 2: Tạo SonarQube Token
-
-1. Vào **`<SonarQube URL>`** → Login
-2. Avatar góc phải → **My Account** → **Security**
-3. Generate Token:
-   - Name: `code-review`
-   - Type: **User Token**
-   - Expiration: **No expiration**
-4. **Copy token** (chỉ hiện 1 lần!)
-
-### Bước 3: Tạo Project trên SonarQube
-
-1. Vào SonarQube → **Create Project** → **Manually**
-2. Điền:
-   - **Project display name**: tên dự án
-   - **Project key**: dùng tên repo, viết thường (vd: `my-project`)
-3. Chọn **Reference branch** → **Create project**
-
-> **Ghi nhớ Project Key** — cần dùng ở bước 5.
-
-### Bước 4: Cấu hình
+### Bước 2: Cấu hình
 
 ```bash
 ai-review setup
@@ -93,22 +73,24 @@ ai-review setup
 
 Điền theo bảng:
 
-| Prompt | Giá trị |
-|--------|---------|
-| Enable AI Review? | `n` |
-| Enable SonarQube? | `y` |
-| SonarQube Host URL | `<SonarQube URL>` |
-| SonarQube Token | Token đã copy ở bước 2 |
-| Block on Security Hotspots? | `y` |
+| Prompt                      | Giá trị                                        |
+| --------------------------- | ---------------------------------------------- |
+| Enable AI Review?           | `n`                                            |
+| Enable SonarQube?           | `y`                                            |
+| SonarQube Host URL          | `https://sonarqube.sotatek.works`              |
+| SonarQube Token             | `sqa_e681b3c3e7107cc587b1f430ceaa9fbf129fe26d` |
+| Block on Security Hotspots? | `y`                                            |
 
-### Bước 5: Cài vào dự án
+### Bước 3: Cài vào dự án
 
 ```bash
 cd /path/to/du-an
 ai-review install
 ```
 
-- **SonarQube Project Key**: nhập đúng key ở bước 3
+- **SonarQube Project Key**: chọn theo dự án:
+  - Backend: `SLive-BE`
+  - Frontend: `SLive-FE`
 - **Base Branch**: Enter (auto-detect `main` hoặc `master`)
 
 **Done!**
@@ -190,39 +172,22 @@ docs/
 
 ## Lưu ý bảo mật
 
-| Gì | Ở đâu | Có bị commit? |
-|----|--------|---------------|
-| Pre-commit hook | `.git/hooks/` | Không |
-| Config & token | `~/.config/ai-review/` | Không |
-| SonarQube temp files | `.scannerwork/` | Hook tự dọn |
-| `.sonarignore` | Project root | Có — thêm vào `.gitignore` nếu cần |
+| Gì                   | Ở đâu                  | Có bị commit?                      |
+| -------------------- | ---------------------- | ---------------------------------- |
+| Pre-commit hook      | `.git/hooks/`          | Không                              |
+| Config & token       | `~/.config/ai-review/` | Không                              |
+| SonarQube temp files | `.scannerwork/`        | Hook tự dọn                        |
+| `.sonarignore`       | Project root           | Có — thêm vào `.gitignore` nếu cần |
 
 ---
 
 ## Troubleshooting
 
-| Lỗi | Nguyên nhân | Fix |
-|------|-------------|-----|
-| `java: command not found` | Chưa cài Java | Cài Java 17 (xem trên), restart terminal |
-| `You're not authorized` | Chưa tạo project trên SonarQube | Tạo project (bước 3), key phải khớp |
-| Hook không chạy | Chưa install hook | `ai-review install` |
-| Commit quá chậm | Scan nhiều file | Commit nhỏ hơn, thêm `.sonarignore` |
+| Lỗi                                  | Nguyên nhân                                                     | Fix                                      |
+| ------------------------------------ | --------------------------------------------------------------- | ---------------------------------------- |
+| `java: command not found`            | Chưa cài Java                                                   | Cài Java 17 (xem trên), restart terminal |
+| `You're not authorized`              | Project key sai hoặc token hết hạn                              | Kiểm tra lại key và token với team lead  |
+| Hook không chạy                      | Chưa install hook                                               | `ai-review install`                      |
+| Commit quá chậm                      | Scan nhiều file                                                 | Commit nhỏ hơn, thêm `.sonarignore`      |
 | `unzip: command not found` (Windows) | Tool tự fallback PowerShell, nếu vẫn lỗi: `scoop install unzip` |
-| Colors bị lỗi (Windows) | Dùng **Windows Terminal** hoặc **Git Bash** thay cmd.exe |
-
----
-
-## Tóm tắt cho member mới
-
-```bash
-# 1. Cài tool (restart terminal sau bước này)
-curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.sh | bash
-
-# 2. Cấu hình (điền theo bảng ở bước 4)
-ai-review setup
-
-# 3. Cài vào dự án
-cd /path/to/project && ai-review install
-```
-
-3 lệnh là xong. Commit bình thường, hook tự chạy.
+| Colors bị lỗi (Windows)              | Dùng **Windows Terminal** hoặc **Git Bash** thay cmd.exe        |
