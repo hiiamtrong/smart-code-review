@@ -4,6 +4,16 @@ set -e
 # SonarQube Code Review Integration
 # This script runs SonarQube analysis and converts results to reviewdog format
 
+# Source platform abstraction layer
+_SONAR_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_SONAR_SCRIPT_DIR/lib/platform.sh" ]]; then
+  source "$_SONAR_SCRIPT_DIR/lib/platform.sh"
+elif [[ -f "$_SONAR_SCRIPT_DIR/platform.sh" ]]; then
+  source "$_SONAR_SCRIPT_DIR/platform.sh"
+elif [[ -f "$HOME/.config/ai-review/hooks/platform.sh" ]]; then
+  source "$HOME/.config/ai-review/hooks/platform.sh"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -12,6 +22,11 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
+
+# Apply color settings if platform.sh is loaded
+if type apply_color_settings &>/dev/null; then
+  apply_color_settings
+fi
 
 # ============================================
 # Helper Functions
@@ -115,10 +130,19 @@ log_info "Project: ${BOLD}$SONAR_PROJECT_KEY${NC} → $SONAR_HOST_URL"
 # ============================================
 
 SONAR_SCANNER=""
+
+# Determine scanner binary name based on platform
+_SCANNER_BIN="sonar-scanner"
+if type is_windows &>/dev/null && is_windows; then
+  _SCANNER_BIN="sonar-scanner.bat"
+fi
+
 if command -v sonar-scanner &> /dev/null; then
   SONAR_SCANNER="sonar-scanner"
 elif command -v sonar-scanner-cli &> /dev/null; then
   SONAR_SCANNER="sonar-scanner-cli"
+elif [[ -f "$HOME/.sonar/sonar-scanner/bin/$_SCANNER_BIN" ]]; then
+  SONAR_SCANNER="$HOME/.sonar/sonar-scanner/bin/$_SCANNER_BIN"
 elif [[ -f "$HOME/.sonar/sonar-scanner/bin/sonar-scanner" ]]; then
   SONAR_SCANNER="$HOME/.sonar/sonar-scanner/bin/sonar-scanner"
 else
@@ -130,23 +154,46 @@ else
   cd "$HOME/.sonar"
 
   if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
+    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-linux-x64.zip"
   elif [[ "$OSTYPE" == "darwin"* ]]; then
-    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-macosx.zip"
+    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-macosx-x64.zip"
+  elif [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "mingw"* ]] || [[ "$OSTYPE" == "cygwin"* ]]; then
+    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-windows-x64.zip"
   else
     SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}.zip"
   fi
 
   if [[ ! -d "$SCANNER_DIR" ]]; then
-    log_info "Downloading SonarQube Scanner..."
+    log_info "Downloading SonarQube Scanner ($SCANNER_ZIP)..."
     curl -sSL "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCANNER_ZIP}" -o scanner.zip
-    unzip -q scanner.zip
-    mv sonar-scanner-${SCANNER_VERSION}* sonar-scanner
-    rm scanner.zip
+
+    # Use safe_unzip if available, otherwise try unzip then PowerShell fallback
+    if type safe_unzip &>/dev/null; then
+      safe_unzip scanner.zip "$HOME/.sonar"
+    elif command -v unzip &>/dev/null; then
+      unzip -q scanner.zip
+    elif command -v powershell.exe &>/dev/null; then
+      log_info "Using PowerShell to extract scanner..."
+      win_zip=$(cygpath -w "$HOME/.sonar/scanner.zip" 2>/dev/null || echo "$HOME/.sonar/scanner.zip")
+      win_dest=$(cygpath -w "$HOME/.sonar" 2>/dev/null || echo "$HOME/.sonar")
+      powershell.exe -NoProfile -Command "Expand-Archive -Path '$win_zip' -DestinationPath '$win_dest' -Force"
+    else
+      log_error "Cannot extract scanner: neither unzip nor PowerShell available"
+      rm -f scanner.zip
+      cd - > /dev/null
+      exit 1
+    fi
+
+    mv sonar-scanner-${SCANNER_VERSION}* sonar-scanner 2>/dev/null || true
+    rm -f scanner.zip
     log_success "Scanner installed"
   fi
 
-  SONAR_SCANNER="$SCANNER_DIR/bin/sonar-scanner"
+  SONAR_SCANNER="$SCANNER_DIR/bin/$_SCANNER_BIN"
+  # Fallback to non-.bat if .bat doesn't exist
+  if [[ ! -f "$SONAR_SCANNER" ]] && [[ -f "$SCANNER_DIR/bin/sonar-scanner" ]]; then
+    SONAR_SCANNER="$SCANNER_DIR/bin/sonar-scanner"
+  fi
   cd - > /dev/null
 fi
 
@@ -280,7 +327,11 @@ else
 fi
 
 # Run scanner (suppress all logs except errors)
-SCANNER_LOG=$(mktemp)
+if type safe_mktemp &>/dev/null; then
+  SCANNER_LOG=$(safe_mktemp "sonar-scanner")
+else
+  SCANNER_LOG=$(mktemp 2>/dev/null || mktemp -t sonar-scanner 2>/dev/null)
+fi
 
 echo "Running SonarQube scanner... (this may take 30-60 seconds)"
 echo ""
@@ -310,8 +361,11 @@ if command -v timeout &> /dev/null; then
 else
   # Windows Git Bash - run without timeout but show progress
   echo "[INFO] Running scanner (no timeout on Windows, press Ctrl+C to cancel)..."
-  $SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1
-  SCANNER_EXIT=$?
+  if $SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1; then
+    SCANNER_EXIT=0
+  else
+    SCANNER_EXIT=$?
+  fi
 fi
 
 # Only show real errors (not Java version warnings)
@@ -424,84 +478,51 @@ get_changed_lines() {
   
   # Parse diff to extract changed lines
   # Format: file|start_line|line_count (one per hunk)
+  # Note: Uses POSIX awk (compatible with BSD awk on macOS, mawk on Linux)
   $diff_command | awk '
     /^diff --git/ {
       # Extract filename from "diff --git a/path b/path"
-      sub(/^diff --git a\//, "")
-      sub(/ b\/.*$/, "")
-      current_file = $0
+      split($0, parts, " ")
+      # parts[4] is "b/path"
+      current_file = substr(parts[4], 3)
     }
     /^@@/ {
       # Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
       # We care about +new_start,new_count
-      match($0, /\+([0-9]+)(,([0-9]+))?/, arr)
-      start_line = arr[1]
-      line_count = (arr[3] != "" ? arr[3] : 1)
-      
-      if (current_file != "" && start_line != "") {
-        print current_file "|" start_line "|" line_count
+      for (i = 1; i <= NF; i++) {
+        if (substr($i, 1, 1) == "+") {
+          plus_part = substr($i, 2)
+          split(plus_part, nums, ",")
+          start_line = nums[1] + 0
+          line_count = (nums[2] != "" ? nums[2] + 0 : 1)
+          if (current_file != "" && start_line > 0) {
+            print current_file "|" start_line "|" line_count
+          }
+          break
+        }
       }
     }
   '
 }
 
-# Filter diagnostics to only include issues on changed lines
+# Filter diagnostics to only include issues on changed lines (single jq pass)
 filter_diagnostics_by_changed_lines() {
   local diagnostics="$1"
   local changed_lines="$2"
-  
+
   # If no changed lines info or diagnostics is empty, return as-is
   if [[ -z "$changed_lines" || "$diagnostics" == "[]" ]]; then
     echo "$diagnostics"
     return
   fi
-  
-  # Build ranges file: file|start|end (one line per hunk)
-  local temp_ranges=$(mktemp)
-  echo "$changed_lines" | while IFS='|' read -r file start count; do
-    end=$((start + count - 1))
-    echo "$file|$start|$end"
-  done > "$temp_ranges"
-  
-  # Filter using bash: iterate through issues and check if in range
-  local result="[]"
-  local issues_array=$(echo "$diagnostics" | jq -c '.[]' 2>/dev/null)
-  
-  if [[ -n "$issues_array" ]]; then
-    local filtered_items=""
-    
-    while IFS= read -r issue; do
-      [[ -z "$issue" ]] && continue
-      
-      local issue_path=$(echo "$issue" | jq -r '.location.path')
-      local issue_line=$(echo "$issue" | jq -r '.location.range.start.line')
-      
-      # Check if this issue is in any changed line range
-      local in_range=false
-      while IFS='|' read -r file start end; do
-        if [[ "$file" == "$issue_path" ]] && [[ "$issue_line" -ge "$start" ]] && [[ "$issue_line" -le "$end" ]]; then
-          in_range=true
-          break
-        fi
-      done < "$temp_ranges"
-      
-      # Add to filtered list if in range
-      if [[ "$in_range" == "true" ]]; then
-        if [[ -z "$filtered_items" ]]; then
-          filtered_items="$issue"
-        else
-          filtered_items="$filtered_items,$issue"
-        fi
-      fi
-    done <<< "$issues_array"
-    
-    if [[ -n "$filtered_items" ]]; then
-      result="[$filtered_items]"
-    fi
-  fi
-  
-  rm -f "$temp_ranges"
-  echo "$result"
+
+  # Build ranges as JSON array: [{"f":"file","s":start,"e":end}, ...]
+  local ranges_json
+  ranges_json=$(echo "$changed_lines" | awk -F'|' '{printf "{\"f\":\"%s\",\"s\":%d,\"e\":%d}\n", $1, $2, $2+$3-1}' | jq -s '.')
+
+  # Filter in a single jq pass
+  echo "$diagnostics" | jq --argjson ranges "$ranges_json" \
+    '[.[] | . as $issue | select(any($ranges[]; .f == $issue.location.path and $issue.location.range.start.line >= .s and $issue.location.range.start.line <= .e))]'
 }
 
 # Apply filtering (only if enabled)
@@ -554,7 +575,7 @@ if [[ "$ISSUE_COUNT" -gt 0 ]]; then
 
   # Display ERROR issues
   if [[ "$ERROR_COUNT" -gt 0 ]]; then
-    echo "$DIAGNOSTICS" | jq -c '.[] | select(.severity == "ERROR")' | while read -r issue; do
+    echo "$DIAGNOSTICS" | jq -c '.[] | select(.severity == "ERROR")' | tr -d '\r' | while read -r issue; do
       local_msg=$(echo "$issue" | jq -r '.message // ""')
       local_file=$(echo "$issue" | jq -r '.location.path // "unknown"')
       local_line=$(echo "$issue" | jq -r '.location.range.start.line // 0')
@@ -565,7 +586,7 @@ if [[ "$ISSUE_COUNT" -gt 0 ]]; then
 
   # Display WARNING issues
   if [[ "$WARNING_COUNT" -gt 0 ]]; then
-    echo "$DIAGNOSTICS" | jq -c '.[] | select(.severity == "WARNING")' | while read -r issue; do
+    echo "$DIAGNOSTICS" | jq -c '.[] | select(.severity == "WARNING")' | tr -d '\r' | while read -r issue; do
       local_msg=$(echo "$issue" | jq -r '.message // ""')
       local_file=$(echo "$issue" | jq -r '.location.path // "unknown"')
       local_line=$(echo "$issue" | jq -r '.location.range.start.line // 0')
@@ -576,7 +597,7 @@ if [[ "$ISSUE_COUNT" -gt 0 ]]; then
 
   # Display INFO issues (only first 3 to avoid clutter)
   if [[ "$INFO_COUNT" -gt 0 ]]; then
-    echo "$DIAGNOSTICS" | jq -c '[.[] | select(.severity == "INFO")] | .[:3] | .[]' | while read -r issue; do
+    echo "$DIAGNOSTICS" | jq -c '[.[] | select(.severity == "INFO")] | .[:3] | .[]' | tr -d '\r' | while read -r issue; do
       local_msg=$(echo "$issue" | jq -r '.message // ""')
       local_file=$(echo "$issue" | jq -r '.location.path // "unknown"')
       local_line=$(echo "$issue" | jq -r '.location.range.start.line // 0')
@@ -603,7 +624,7 @@ if [[ "$HOTSPOT_COUNT" -gt 0 ]]; then
   echo ""
 
   # Display hotspots
-  echo "$HOTSPOTS_JSON" | jq -c '.hotspots[:5] | .[]' 2>/dev/null | while read -r hotspot; do
+  echo "$HOTSPOTS_JSON" | jq -c '.hotspots[:5] | .[]' 2>/dev/null | tr -d '\r' | while read -r hotspot; do
     local_msg=$(echo "$hotspot" | jq -r '.message // ""')
     local_file=$(echo "$hotspot" | jq -r '.component | sub("^[^:]+:"; "")' 2>/dev/null)
     local_line=$(echo "$hotspot" | jq -r '.line // 0')

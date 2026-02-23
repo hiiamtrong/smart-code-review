@@ -3,6 +3,16 @@
 # Pre-commit hook for AI-powered code review
 set -e
 
+# Source platform abstraction layer
+_PRECOMMIT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_PRECOMMIT_SCRIPT_DIR/../lib/platform.sh" ]]; then
+  source "$_PRECOMMIT_SCRIPT_DIR/../lib/platform.sh"
+elif [[ -f "$_PRECOMMIT_SCRIPT_DIR/platform.sh" ]]; then
+  source "$_PRECOMMIT_SCRIPT_DIR/platform.sh"
+elif [[ -f "$HOME/.config/ai-review/hooks/platform.sh" ]]; then
+  source "$HOME/.config/ai-review/hooks/platform.sh"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -11,6 +21,11 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
+
+# Apply color settings if platform.sh is loaded
+if type apply_color_settings &>/dev/null; then
+  apply_color_settings
+fi
 
 # Paths
 CONFIG_DIR="$HOME/.config/ai-review"
@@ -141,9 +156,10 @@ filter_ignored_files() {
 
   log_info "Applying ignore patterns..."
 
-  # Read ignore patterns
+  # Read ignore patterns (strip CR for Windows CRLF compatibility)
   local patterns=()
   while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
     [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
     line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     [[ -n "$line" ]] && patterns+=("$line")
@@ -160,6 +176,7 @@ filter_ignored_files() {
   local in_block=false
 
   while IFS= read -r line; do
+    line="${line%$'\r'}"
     if [[ "$line" =~ ^diff\ --git\ a/(.+)\ b/(.+)$ ]]; then
       # Save previous block if not ignored
       if [[ -n "$current_file" && "$in_block" == true ]]; then
@@ -240,7 +257,12 @@ call_ai_gateway() {
   local repo_url=$(git remote get-url origin 2>/dev/null || echo "local")
 
   # Save diff to temp file
-  local diff_file=$(mktemp)
+  local diff_file
+  if type safe_mktemp &>/dev/null; then
+    diff_file=$(safe_mktemp "ai-diff")
+  else
+    diff_file=$(mktemp 2>/dev/null || mktemp -t ai-diff 2>/dev/null)
+  fi
   echo "$DIFF" > "$diff_file"
 
   # Create JSON payload with streaming enabled
@@ -271,11 +293,13 @@ call_ai_gateway() {
     }')
 
   # Temp files for processing (must be accessible outside subshell)
-  local result_file=$(mktemp)
-  local diagnostics_file=$(mktemp)
-  local text_buffer_file=$(mktemp)
-  local has_diagnostics_file=$(mktemp)
-  local api_error_file=$(mktemp)
+  local _mk
+  if type safe_mktemp &>/dev/null; then _mk="safe_mktemp"; else _mk="mktemp"; fi
+  local result_file=$($_mk "ai-result" 2>/dev/null || mktemp)
+  local diagnostics_file=$($_mk "ai-diag" 2>/dev/null || mktemp)
+  local text_buffer_file=$($_mk "ai-text" 2>/dev/null || mktemp)
+  local has_diagnostics_file=$($_mk "ai-hasdiag" 2>/dev/null || mktemp)
+  local api_error_file=$($_mk "ai-apierr" 2>/dev/null || mktemp)
 
   echo ""
   print_separator
@@ -291,10 +315,26 @@ call_ai_gateway() {
   # Store file paths in temp file for subshell access
   local current_event=""
 
-  # Make streaming API request with SSE - use process substitution to avoid subshell issues
+  # Make streaming API request with SSE
+  # Use a temp file to capture the SSE stream for cross-platform compatibility
+  # (process substitution < <(...) is unreliable on some Windows Git Bash versions)
+  local sse_stream_file
+  if type safe_mktemp &>/dev/null; then
+    sse_stream_file=$(safe_mktemp "ai-sse")
+  else
+    sse_stream_file=$(mktemp 2>/dev/null || mktemp -t ai-sse 2>/dev/null)
+  fi
+
+  curl -sN "$AI_GATEWAY_URL/review" \
+    -H "X-API-Key: $AI_GATEWAY_API_KEY" \
+    -H "Accept: text/event-stream" \
+    -X POST \
+    -F "metadata=$json_payload" \
+    -F "git_diff=@$diff_file" > "$sse_stream_file" 2>/dev/null || true
+
   while IFS= read -r line; do
     # Skip empty lines and carriage returns
-    line=$(echo "$line" | tr -d '\r')
+    line="${line%$'\r'}"
     [[ -z "$line" ]] && continue
 
     # Parse event type line
@@ -457,12 +497,10 @@ call_ai_gateway() {
           ;;
       esac
     fi
-  done < <(curl -sN "$AI_GATEWAY_URL/review" \
-    -H "X-API-Key: $AI_GATEWAY_API_KEY" \
-    -H "Accept: text/event-stream" \
-    -X POST \
-    -F "metadata=$json_payload" \
-    -F "git_diff=@$diff_file" 2>/dev/null)
+  done < "$sse_stream_file"
+
+  # Cleanup SSE stream temp file
+  rm -f "$sse_stream_file"
 
   # Check if API error occurred
   local had_api_error=$(cat "$api_error_file" 2>/dev/null || echo "0")
@@ -506,7 +544,12 @@ call_ai_gateway_sync() {
   local repo_url=$(git remote get-url origin 2>/dev/null || echo "local")
 
   # Save diff to temp file
-  local diff_file=$(mktemp)
+  local diff_file
+  if type safe_mktemp &>/dev/null; then
+    diff_file=$(safe_mktemp "ai-sync-diff")
+  else
+    diff_file=$(mktemp 2>/dev/null || mktemp -t ai-sync-diff 2>/dev/null)
+  fi
   echo "$DIFF" > "$diff_file"
 
   # Create JSON payload (no streaming)
@@ -612,7 +655,7 @@ display_results() {
     echo ""
     print_separator
 
-    echo "$diagnostics" | jq -c '.[]' | while read -r issue; do
+    echo "$diagnostics" | jq -c '.[]' | tr -d '\r' | while read -r issue; do
       local severity=$(echo "$issue" | jq -r '.severity // "INFO"')
       local message=$(echo "$issue" | jq -r '.message // "No message"')
       local file=$(echo "$issue" | jq -r '.location.path // "unknown"')
@@ -713,10 +756,6 @@ run_sonarqube_analysis() {
   local temp_output="${temp_dir}/sonar-output.txt"
   local sonar_exit_code=0
   
-  # Debug: Show script path
-  echo "[DEBUG] Running: $sonar_script"
-  echo "[DEBUG] Output will be captured to: $temp_output"
-  
   # Run and capture both output and exit code
   if bash "$sonar_script" > "$temp_output" 2>&1; then
     sonar_exit_code=0
@@ -772,6 +811,9 @@ cleanup_temp_files() {
     fi
   done
   
+  # Clean up SonarQube output capture file
+  rm -f "$CONFIG_DIR/temp/sonar-output.txt" 2>/dev/null || true
+
   # Comprehensive cleanup of ALL SonarQube-generated files
   rm -rf .scannerwork 2>/dev/null || true
   rm -rf .sonar 2>/dev/null || true
@@ -780,7 +822,10 @@ cleanup_temp_files() {
   rm -f sonar-report.json 2>/dev/null || true
   
   # Clean up any .sonar* files in current directory
-  find . -maxdepth 1 -name ".sonar*" -type f -delete 2>/dev/null || true
+  # Use rm with glob instead of find for better Windows Git Bash compatibility
+  for f in .sonar*; do
+    [[ -f "$f" ]] && rm -f "$f" 2>/dev/null || true
+  done
   
   # Clean up auto-generated sonar-project.properties (has "auto-generated" comment)
   if [[ -f "sonar-project.properties" ]]; then

@@ -1,93 +1,101 @@
-# CLAUDE.md
+# AI DevKit Rules
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Project Context
+This project uses ai-devkit for structured AI-assisted development. Phase documentation is located in `docs/ai/`.
 
-## Project Overview
+## Documentation Structure
+- `docs/ai/requirements/` - Problem understanding and requirements
+- `docs/ai/design/` - System architecture and design decisions (include mermaid diagrams)
+- `docs/ai/planning/` - Task breakdown and project planning
+- `docs/ai/implementation/` - Implementation guides and notes
+- `docs/ai/testing/` - Testing strategy and test cases
+- `docs/ai/deployment/` - Deployment and infrastructure docs
+- `docs/ai/monitoring/` - Monitoring and observability setup
 
-This is a **Smart Code Review GitHub Action** that automatically detects project language/framework and runs appropriate code review tools with reviewdog integration. The action combines traditional linting tools with AI-powered code review using an AI Gateway service.
+## Code Style & Standards
+- Follow the project's established code style and conventions
+- Write clear, self-documenting code with meaningful variable names
+- Add comments for complex logic or non-obvious decisions
 
-## Architecture
+## Development Workflow
+- Review phase documentation in `docs/ai/` before implementing features
+- Keep requirements, design, and implementation docs updated as the project evolves
+- Reference the planning doc for task breakdown and priorities
+- Copy the testing template (`docs/ai/testing/README.md`) before creating feature-specific testing docs
 
-- **Composite Action**: Uses `action.yml` configuration with shell script execution
-- **Two-stage Process**:
-  1. `detect-language.sh` - Detects language and runs appropriate linters
-  2. `ai-review.sh` - Performs AI-powered review via gateway and formats output for reviewdog
-- **Language Support**: Node.js/TS, Python, Java, Go, .NET with corresponding linters
-- **AI Gateway Integration**: Uses external AI gateway service instead of direct API calls
+## AI Interaction Guidelines
+- When implementing features, first check relevant phase documentation
+- For new features, start with requirements clarification
+- Update phase docs when significant changes or decisions are made
+
+## Skills (Extend Your Capabilities)
+Skills are packaged capabilities that teach you new competencies, patterns, and best practices. Check for installed skills in the project's skill directory and use them to enhance your work.
+
+### Using Installed Skills
+1. **Check for skills**: Look for `SKILL.md` files in the project's skill directory
+2. **Read skill instructions**: Each skill contains detailed guidance on when and how to use it
+3. **Apply skill knowledge**: Follow the patterns, commands, and best practices defined in the skill
+
+### Key Installed Skills
+- **memory**: Use AI DevKit's memory service via CLI commands when MCP is unavailable. Read the skill for detailed `memory store` and `memory search` command usage.
+
+### When to Reference Skills
+- Before implementing features that match a skill's domain
+- When MCP tools are unavailable but skill provides CLI alternatives
+- To follow established patterns and conventions defined in skills
+
+## Knowledge Memory (Always Use When Helpful)
+The AI assistant should proactively use knowledge memory throughout all interactions.
+
+> **Tip**: If MCP is unavailable, use the **memory skill** for detailed CLI command reference.
+
+### When to Search Memory
+- Before starting any task, search for relevant project conventions, patterns, or decisions
+- When you need clarification on how something was done before
+- To check for existing solutions to similar problems
+- To understand project-specific terminology or standards
+
+**How to search**:
+- Use `memory.searchKnowledge` MCP tool with relevant keywords, tags, and scope
+- If MCP tools are unavailable, use `npx ai-devkit@latest memory search` CLI command (see memory skill for details)
+- Example: Search for "authentication patterns" when implementing auth features
+
+### When to Store Memory
+- After making important architectural or design decisions
+- When discovering useful patterns or solutions worth reusing
+- If the user explicitly asks to "remember this" or save guidance
+- When you establish new conventions or standards for the project
+
+**How to store**:
+- Use `memory.storeKnowledge` MCP tool
+- If MCP tools are unavailable, use `npx ai-devkit@latest memory store` CLI command (see memory skill for details)
+- Include clear title, detailed content, relevant tags, and appropriate scope
+- Make knowledge specific and actionable, not generic advice
+
+### Memory Best Practices
+- **Be Proactive**: Search memory before asking the user repetitive questions
+- **Be Specific**: Store knowledge that's actionable and reusable
+- **Use Tags**: Tag knowledge appropriately for easy discovery (e.g., "api", "testing", "architecture")
+- **Scope Appropriately**: Use `global` for general patterns, `project:<name>` for project-specific knowledge
+
+## Testing & Quality
+- Write tests alongside implementation
+- Follow the testing strategy defined in `docs/ai/testing/`
+- Use `/writing-test` to generate unit and integration tests targeting 100% coverage
+- Ensure code passes all tests before considering it complete
+
+## Documentation
+- Update phase documentation when requirements or design changes
+- Keep inline code comments focused and relevant
+- Document architectural decisions and their rationale
+- Use mermaid diagrams for any architectural or data-flow visuals (update existing diagrams if needed)
+- Record test coverage results and outstanding gaps in `docs/ai/testing/`
 
 ## Key Commands
-
-### Testing Scripts Locally
-```bash
-# Test language detection
-bash scripts/detect-language.sh
-
-# Test AI review (requires environment variables)
-export AI_GATEWAY_URL="https://your-gateway.com/api/review"
-export AI_GATEWAY_API_KEY="your-api-key"
-export GITHUB_TOKEN="your-token"
-bash scripts/ai-review.sh
-```
-
-### Development Setup
-```bash
-# Make scripts executable
-chmod +x scripts/*.sh
-
-# Validate shell script syntax
-bash -n scripts/detect-language.sh
-bash -n scripts/ai-review.sh
-```
-
-## Code Conventions
-
-- Use `#!/usr/bin/env bash` and `set -e` in shell scripts
-- Environment variables in UPPERCASE
-- Informative echo messages with descriptive prefixes
-- Error handling with proper exit codes
-- Use `$(dirname "$0")` for relative script paths
-
-## Required Environment Variables
-
-- `GITHUB_TOKEN`: Required for reviewdog PR comments (automatically provided in GitHub Actions)
-- `AI_GATEWAY_URL`: Required for AI Gateway service endpoint
-- `AI_GATEWAY_API_KEY`: Required for AI Gateway authentication
-- `AI_MODEL`: Optional AI model selection (default: gemini-2.0-flash)
-- `AI_PROVIDER`: Optional AI provider selection (default: google)
-
-**Important**: The script automatically sets `REVIEWDOG_GITHUB_API_TOKEN=$GITHUB_TOKEN` for reviewdog integration.
-
-## Dependencies
-
-The action automatically installs:
-- **reviewdog**: Downloaded via official install script to `$HOME/bin`
-
-External tools used:
-- `curl`: API calls and downloads
-- `jq`: JSON processing (ensure available in environment)
-- `git`: Diff generation and repository operations
-
-## Testing Strategy
-
-### **GitHub Actions Testing (Recommended)**
-1. **Repository Setup**: Ensure proper permissions in workflow and repository settings
-2. **Create PR**: Push changes and create pull request to trigger action
-3. **Check Results**: Review AI-powered comments posted directly to PR
-
-### **Local Testing**
-1. **Script Testing**: Run with environment variables - uses local reporter automatically
-2. **With GitHub API**: Use Personal Access Token for full GitHub integration testing
-3. **Without API**: Review output saved to `ai-output.json`
-
-### **Required Permissions**
-- **Workflow**: `contents: read`, `pull-requests: write`, `checks: write`
-- **Repository Settings**: Enable "Read and write permissions" for GitHub Actions
-- **Local Testing**: Personal Access Token with `repo` and `pull_requests` scopes
-
-## File Structure
-
-- `action.yml`: GitHub Action configuration and inputs
-- `scripts/detect-language.sh`: Language detection logic
-- `scripts/ai-review.sh`: AI review implementation with AI Gateway integration
-- `README.md`: User-facing documentation
-- `REQUIREMENT.md`: Detailed Vietnamese requirements specification
+When working on this project, you can run commands to:
+- Understand project requirements and goals (`review-requirements`)
+- Review architectural decisions (`review-design`)
+- Plan and execute tasks (`execute-plan`)
+- Verify implementation against design (`check-implementation`)
+- Writing tests (`writing-test`)
+- Perform structured code reviews (`code-review`)

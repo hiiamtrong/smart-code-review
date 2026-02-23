@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
+# Source platform abstraction layer if available
+_DETECT_LANG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_DETECT_LANG_SCRIPT_DIR/lib/platform.sh" ]]; then
+  source "$_DETECT_LANG_SCRIPT_DIR/lib/platform.sh"
+elif [[ -f "$HOME/.config/ai-review/hooks/platform.sh" ]]; then
+  source "$HOME/.config/ai-review/hooks/platform.sh"
+fi
+
 # Install reviewdog
 mkdir -p $HOME/bin
 curl -sfL https://raw.githubusercontent.com/reviewdog/reviewdog/master/install.sh | sh -s -- -b $HOME/bin

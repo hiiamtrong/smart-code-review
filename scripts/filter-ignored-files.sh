@@ -3,6 +3,14 @@
 
 set -e
 
+# Source platform abstraction layer if available
+_FILTER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_FILTER_SCRIPT_DIR/lib/platform.sh" ]]; then
+  source "$_FILTER_SCRIPT_DIR/lib/platform.sh"
+elif [[ -f "$_FILTER_SCRIPT_DIR/platform.sh" ]]; then
+  source "$_FILTER_SCRIPT_DIR/platform.sh"
+fi
+
 # Read from stdin or file
 if [[ -n "$1" && -f "$1" ]]; then
   # First argument is a file path
@@ -27,6 +35,8 @@ fi
 # Read ignore patterns from file (skip empty lines and comments)
 IGNORE_PATTERNS=()
 while IFS= read -r line || [[ -n "$line" ]]; do
+  # Strip CR for Windows CRLF compatibility
+  line="${line%$'\r'}"
   # Skip empty lines and comments
   if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
     continue
@@ -53,6 +63,8 @@ CURRENT_BLOCK=""
 IN_FILE_BLOCK=false
 
 while IFS= read -r line; do
+  # Strip CR for Windows CRLF compatibility
+  line="${line%$'\r'}"
   # Check if this is a file header (diff --git or +++ line)
   if [[ "$line" =~ ^diff\ --git\ a/(.+)\ b/(.+)$ ]] || [[ "$line" =~ ^\+\+\+\ b/(.+)$ ]]; then
     # Save previous block if it wasn't ignored

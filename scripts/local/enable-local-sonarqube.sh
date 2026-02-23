@@ -3,6 +3,16 @@
 
 set -e
 
+# Source platform abstraction layer if available
+_SONAR_ENABLE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_SONAR_ENABLE_SCRIPT_DIR/../lib/platform.sh" ]]; then
+  source "$_SONAR_ENABLE_SCRIPT_DIR/../lib/platform.sh"
+elif [[ -f "$_SONAR_ENABLE_SCRIPT_DIR/platform.sh" ]]; then
+  source "$_SONAR_ENABLE_SCRIPT_DIR/platform.sh"
+elif [[ -f "$HOME/.config/ai-review/hooks/platform.sh" ]]; then
+  source "$HOME/.config/ai-review/hooks/platform.sh"
+fi
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -10,6 +20,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
+
+# Apply color settings if platform.sh is loaded
+if type apply_color_settings &>/dev/null; then
+  apply_color_settings
+fi
 
 CONFIG_DIR="$HOME/.config/ai-review"
 CONFIG_FILE="$CONFIG_DIR/config"
@@ -104,26 +119,46 @@ case "$choice" in
     
     # Update config
     if grep -q "^ENABLE_SONARQUBE_LOCAL=" "$CONFIG_FILE"; then
-      sed -i.bak 's/^ENABLE_SONARQUBE_LOCAL=.*/ENABLE_SONARQUBE_LOCAL="true"/' "$CONFIG_FILE"
+      if type safe_sed_inplace &>/dev/null; then
+        safe_sed_inplace 's/^ENABLE_SONARQUBE_LOCAL=.*/ENABLE_SONARQUBE_LOCAL="true"/' "$CONFIG_FILE"
+      else
+        sed -i.bak 's/^ENABLE_SONARQUBE_LOCAL=.*/ENABLE_SONARQUBE_LOCAL="true"/' "$CONFIG_FILE"
+        rm -f "$CONFIG_FILE.bak"
+      fi
     else
       echo 'ENABLE_SONARQUBE_LOCAL="true"' >> "$CONFIG_FILE"
     fi
     
     if grep -q "^SONAR_HOST_URL=" "$CONFIG_FILE"; then
-      sed -i.bak "s|^SONAR_HOST_URL=.*|SONAR_HOST_URL=\"$SONAR_HOST_URL\"|" "$CONFIG_FILE"
+      if type safe_sed_inplace &>/dev/null; then
+        safe_sed_inplace "s|^SONAR_HOST_URL=.*|SONAR_HOST_URL=\"$SONAR_HOST_URL\"|" "$CONFIG_FILE"
+      else
+        sed -i.bak "s|^SONAR_HOST_URL=.*|SONAR_HOST_URL=\"$SONAR_HOST_URL\"|" "$CONFIG_FILE"
+        rm -f "$CONFIG_FILE.bak"
+      fi
     else
       echo "SONAR_HOST_URL=\"$SONAR_HOST_URL\"" >> "$CONFIG_FILE"
     fi
     
     if grep -q "^SONAR_TOKEN=" "$CONFIG_FILE"; then
-      sed -i.bak "s|^SONAR_TOKEN=.*|SONAR_TOKEN=\"$SONAR_TOKEN\"|" "$CONFIG_FILE"
+      if type safe_sed_inplace &>/dev/null; then
+        safe_sed_inplace "s|^SONAR_TOKEN=.*|SONAR_TOKEN=\"$SONAR_TOKEN\"|" "$CONFIG_FILE"
+      else
+        sed -i.bak "s|^SONAR_TOKEN=.*|SONAR_TOKEN=\"$SONAR_TOKEN\"|" "$CONFIG_FILE"
+        rm -f "$CONFIG_FILE.bak"
+      fi
     else
       echo "SONAR_TOKEN=\"$SONAR_TOKEN\"" >> "$CONFIG_FILE"
     fi
     
     if [[ -n "$SONAR_PROJECT_KEY" ]]; then
       if grep -q "^SONAR_PROJECT_KEY=" "$CONFIG_FILE"; then
-        sed -i.bak "s|^SONAR_PROJECT_KEY=.*|SONAR_PROJECT_KEY=\"$SONAR_PROJECT_KEY\"|" "$CONFIG_FILE"
+        if type safe_sed_inplace &>/dev/null; then
+          safe_sed_inplace "s|^SONAR_PROJECT_KEY=.*|SONAR_PROJECT_KEY=\"$SONAR_PROJECT_KEY\"|" "$CONFIG_FILE"
+        else
+          sed -i.bak "s|^SONAR_PROJECT_KEY=.*|SONAR_PROJECT_KEY=\"$SONAR_PROJECT_KEY\"|" "$CONFIG_FILE"
+          rm -f "$CONFIG_FILE.bak"
+        fi
       else
         echo "SONAR_PROJECT_KEY=\"$SONAR_PROJECT_KEY\"" >> "$CONFIG_FILE"
       fi
@@ -145,7 +180,12 @@ case "$choice" in
     
     # Update config
     if grep -q "^ENABLE_SONARQUBE_LOCAL=" "$CONFIG_FILE"; then
-      sed -i.bak 's/^ENABLE_SONARQUBE_LOCAL=.*/ENABLE_SONARQUBE_LOCAL="false"/' "$CONFIG_FILE"
+      if type safe_sed_inplace &>/dev/null; then
+        safe_sed_inplace 's/^ENABLE_SONARQUBE_LOCAL=.*/ENABLE_SONARQUBE_LOCAL="false"/' "$CONFIG_FILE"
+      else
+        sed -i.bak 's/^ENABLE_SONARQUBE_LOCAL=.*/ENABLE_SONARQUBE_LOCAL="false"/' "$CONFIG_FILE"
+        rm -f "$CONFIG_FILE.bak"
+      fi
     else
       echo 'ENABLE_SONARQUBE_LOCAL="false"' >> "$CONFIG_FILE"
     fi

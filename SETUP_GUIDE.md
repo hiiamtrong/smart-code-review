@@ -24,19 +24,19 @@ SonarQube scanner requires Java 11 or higher on all platforms. Install before en
 ```bash
 # Ubuntu/Debian
 sudo apt update
-sudo apt install openjdk-18-jdk
+sudo apt install openjdk-17-jdk
 
 # Fedora/RHEL
-sudo dnf install java-18-openjdk-devel
+sudo dnf install java-17-openjdk-devel
 
 # Arch
-sudo pacman -S jdk18-openjdk
+sudo pacman -S jdk17-openjdk
 ```
 
 ### macOS
 
 ```bash
-brew install openjdk@18
+brew install openjdk@17
 # Follow the post-install instructions to add Java to your PATH
 ```
 
@@ -44,20 +44,20 @@ brew install openjdk@18
 
 **Option A – Winget:**
 ```powershell
-winget install EclipseAdoptium.Temurin.18.JDK
+winget install EclipseAdoptium.Temurin.17.JDK
 # or
-winget install Microsoft.OpenJDK.18
+winget install Microsoft.OpenJDK.17
 ```
 
 **Option B – Chocolatey:**
 ```powershell
-choco install temurin18
+choco install temurin17
 ```
 
-**Option C – Manual:** Download from [Adoptium](https://adoptium.net/temurin/releases/?version=18&os=windows&arch=x64) and run the installer. During setup, enable **"Add to PATH"**.
+**Option C – Manual:** Download from [Adoptium](https://adoptium.net/temurin/releases/?version=17&os=windows&arch=x64) and run the installer. During setup, enable **"Add to PATH"**.
 
 **Note:** If `java` is not found after install, add the Java `bin` folder to your PATH manually (System Properties → Environment Variables → Path). The typical path is:
-`C:\Program Files\Eclipse Adoptium\jdk-18.x.x-hotspot\bin`
+`C:\Program Files\Eclipse Adoptium\jdk-17.x.x-hotspot\bin`
 
 ### Verify installation
 
@@ -79,23 +79,29 @@ curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/sc
 
 ### Windows
 
-**From PowerShell (recommended):**
+**Option A – Git Bash (recommended):**
+```bash
+# From the project directory in Git Bash:
+bash scripts/local/install.sh
+
+# Or one-line install:
+curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.sh | bash
+```
+
+**Option B – PowerShell:**
 ```powershell
 cd C:\path\to\smart-code-review
 powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
 ```
 
-**From Git Bash:** Use forward slashes for the path:
-```bash
-powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
-```
-
-**One-line install (when published):**
+**Option C – One-line install (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.ps1 | iex
 ```
 
-This will install the `ai-review` command and add it to your PATH. Restart your terminal after installation.
+All options install the `ai-review` command and add it to your PATH. Restart your terminal after installation.
+
+**Supported Windows shells:** Git Bash, PowerShell, CMD (via wrapper scripts), and WSL (uses Linux install).
 
 ---
 
@@ -422,14 +428,30 @@ git commit -m "message"
 2. Close all terminals and open a new one
 3. If still not found, add Java to PATH manually:
    - System Properties → Environment Variables → Path
-   - Add: `C:\Program Files\Eclipse Adoptium\jdk-18.x.x-hotspot\bin` (match your version)
-4. Or temporarily in Git Bash: `export PATH="/c/Program Files/Eclipse Adoptium/jdk-18.0.2.101-hotspot/bin:$PATH"`
+   - Add: `C:\Program Files\Eclipse Adoptium\jdk-17.x.x-hotspot\bin` (match your version)
+4. Or temporarily in Git Bash: `export PATH="/c/Program Files/Eclipse Adoptium/jdk-17.0.x-hotspot/bin:$PATH"`
 
 ### Issue: "enable-local-sonarqube: command not found" (Windows)
 
 **Solution:** Run the script directly:
 ```bash
 bash "$HOME/.config/ai-review/hooks/enable-local-sonarqube.sh"
+```
+
+### Issue: Colors not displaying correctly (Windows)
+
+**Solution:** Use Windows Terminal or Git Bash (both support ANSI colors). Older cmd.exe may show garbled characters instead of colors. The tool auto-detects color support and falls back to plain text when needed.
+
+### Issue: "unzip: command not found" during SonarQube scanner install (Windows)
+
+**Solution:** The tool automatically falls back to PowerShell `Expand-Archive` if `unzip` is not available. If both fail, install unzip via Git Bash or use the PowerShell installer (`install.ps1`).
+
+### Issue: Git Bash version compatibility
+
+**Minimum required:** Git for Windows 2.40+ (bundled with recent Git versions). Check with:
+```bash
+git --version
+bash --version
 ```
 
 ---

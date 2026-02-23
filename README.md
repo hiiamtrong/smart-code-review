@@ -150,14 +150,18 @@ Add these secrets to your repository (Settings → Secrets and variables → Act
 
 ### Prerequisites
 
-```bash
-# Required tools
-- bash
+```
+Required tools:
+- bash (included with Git for Windows)
 - git
 - curl
 - jq
 
-# When using SonarQube locally (optional)
+Windows:
+- Git for Windows 2.40+ (provides Git Bash)
+- jq (auto-installed by installer via winget/choco/scoop)
+
+When using SonarQube locally (optional):
 - Java 11+ (SonarQube scanner requirement)
 ```
 
@@ -193,24 +197,25 @@ bash scripts/local/install.sh
 curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.sh | bash
 ```
 
-**Windows:**
-```powershell
-# Option 1: Run installer from repo (PowerShell)
-cd C:\path\to\smart-code-review
-powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
-```
-
+**Windows (Git Bash, PowerShell, or CMD):**
 ```bash
-# From Git Bash - use forward slashes for paths
+# Option 1: Git Bash (recommended)
+bash scripts/local/install.sh
+```
+
+```powershell
+# Option 2: PowerShell
 powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
 ```
 
 ```powershell
-# Option 2: One-line install (when published)
+# Option 3: One-line install (PowerShell)
 irm https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.ps1 | iex
 ```
 
-**Windows + SonarQube:** Java 11+ is required. Install via `winget install EclipseAdoptium.Temurin.18.JDK` or `choco install temurin18`. See [SETUP_GUIDE.md](SETUP_GUIDE.md) for details.
+**Windows + SonarQube:** Java 11+ is required. Install via `winget install EclipseAdoptium.Temurin.17.JDK` or `choco install temurin17`. See [SETUP_GUIDE.md](SETUP_GUIDE.md) for details.
+
+**Supported Windows shells:** Git Bash, PowerShell, CMD (via wrapper scripts), and WSL (uses Linux install).
 
 The installer will:
 1. Install required dependencies (jq)
@@ -351,7 +356,7 @@ rm -rf ~/.config/ai-review ~/.local/bin/ai-review
 
 ### Windows Troubleshooting
 
-- **Java not found:** Install Java 11+ (`winget install EclipseAdoptium.Temurin.18.JDK` or `choco install temurin18`). Restart terminal. Add to PATH if needed.
+- **Java not found:** Install Java 11+ (`winget install EclipseAdoptium.Temurin.17.JDK` or `choco install temurin17`). Restart terminal. Add to PATH if needed.
 - **enable-local-sonarqube not found:** Run `bash "$HOME/.config/ai-review/hooks/enable-local-sonarqube.sh"`
 - **Path errors in Git Bash:** Use forward slashes (e.g. `scripts/local/install.ps1`)
 

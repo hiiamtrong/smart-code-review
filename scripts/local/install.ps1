@@ -143,7 +143,7 @@ function Install-Scripts {
         Copy-Item "$ScriptDir\ai-review" "$BinDir\ai-review" -Force
         Copy-Item "$ScriptDir\pre-commit.sh" "$HooksDir\pre-commit.sh" -Force
         Copy-Item "$ScriptDir\enable-local-sonarqube.sh" "$HooksDir\enable-local-sonarqube.sh" -Force
-        
+
         # Copy SonarQube scripts from parent scripts directory
         $ParentScriptDir = Split-Path -Parent $ScriptDir
         if (Test-Path "$ParentScriptDir\sonarqube-review.sh") {
@@ -152,13 +152,17 @@ function Install-Scripts {
         if (Test-Path "$ParentScriptDir\showlinenum.awk") {
             Copy-Item "$ParentScriptDir\showlinenum.awk" "$HooksDir\showlinenum.awk" -Force
         }
+        # Copy platform abstraction library
+        if (Test-Path "$ParentScriptDir\lib\platform.sh") {
+            Copy-Item "$ParentScriptDir\lib\platform.sh" "$HooksDir\platform.sh" -Force
+        }
     } else {
         # Download from remote
         $RepoUrl = "https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main"
         Invoke-WebRequest -Uri "$RepoUrl/scripts/local/ai-review" -OutFile "$BinDir\ai-review"
         Invoke-WebRequest -Uri "$RepoUrl/scripts/local/pre-commit.sh" -OutFile "$HooksDir\pre-commit.sh"
         Invoke-WebRequest -Uri "$RepoUrl/scripts/local/enable-local-sonarqube.sh" -OutFile "$HooksDir\enable-local-sonarqube.sh"
-        
+
         # Download SonarQube scripts (optional, may not exist in older versions)
         try {
             Invoke-WebRequest -Uri "$RepoUrl/scripts/sonarqube-review.sh" -OutFile "$HooksDir\sonarqube-review.sh" -ErrorAction SilentlyContinue
@@ -169,6 +173,12 @@ function Install-Scripts {
             Invoke-WebRequest -Uri "$RepoUrl/scripts/showlinenum.awk" -OutFile "$HooksDir\showlinenum.awk" -ErrorAction SilentlyContinue
         } catch {
             Write-Warning "showlinenum.awk not available from remote"
+        }
+        # Download platform abstraction library
+        try {
+            Invoke-WebRequest -Uri "$RepoUrl/scripts/lib/platform.sh" -OutFile "$HooksDir\platform.sh" -ErrorAction SilentlyContinue
+        } catch {
+            Write-Warning "platform.sh not available from remote"
         }
     }
 
