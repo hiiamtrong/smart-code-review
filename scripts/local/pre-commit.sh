@@ -89,20 +89,22 @@ load_config() {
   # Load global config
   source "$CONFIG_FILE"
 
-  if [[ -z "$AI_GATEWAY_URL" ]]; then
-    log_error "AI_GATEWAY_URL not configured"
-    exit 1
-  fi
-
-  if [[ -z "$AI_GATEWAY_API_KEY" ]]; then
-    log_error "AI_GATEWAY_API_KEY not configured"
-    exit 1
-  fi
-
   # Set defaults
+  ENABLE_AI_REVIEW="${ENABLE_AI_REVIEW:-true}"
   AI_MODEL="${AI_MODEL:-gemini-2.0-flash}"
   AI_PROVIDER="${AI_PROVIDER:-google}"
-  ENABLE_AI_REVIEW="${ENABLE_AI_REVIEW:-true}"
+
+  # Only require AI credentials if AI review is enabled
+  if [[ "$ENABLE_AI_REVIEW" == "true" ]]; then
+    if [[ -z "$AI_GATEWAY_URL" ]]; then
+      log_error "AI_GATEWAY_URL not configured"
+      exit 1
+    fi
+    if [[ -z "$AI_GATEWAY_API_KEY" ]]; then
+      log_error "AI_GATEWAY_API_KEY not configured"
+      exit 1
+    fi
+  fi
   ENABLE_SONARQUBE_LOCAL="${ENABLE_SONARQUBE_LOCAL:-false}"
   SONAR_BLOCK_ON_HOTSPOTS="${SONAR_BLOCK_ON_HOTSPOTS:-true}"
   SONAR_FILTER_CHANGED_LINES_ONLY="${SONAR_FILTER_CHANGED_LINES_ONLY:-true}"
