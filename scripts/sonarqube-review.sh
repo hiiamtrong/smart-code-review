@@ -226,15 +226,32 @@ else
       exit 1
     fi
 
-    mv sonar-scanner-${SCANNER_VERSION}* sonar-scanner 2>/dev/null || true
+    # Find the extracted directory (name varies by version/platform)
+    EXTRACTED_DIR=$(ls -d sonar-scanner-*/ 2>/dev/null | head -1 | sed 's/\/$//')
+    if [[ -n "$EXTRACTED_DIR" && "$EXTRACTED_DIR" != "sonar-scanner" ]]; then
+      log_info "Extracted to: $EXTRACTED_DIR"
+      rm -rf sonar-scanner 2>/dev/null
+      mv "$EXTRACTED_DIR" sonar-scanner
+    fi
     rm -f scanner.zip
+
+    # Debug: list bin directory contents
+    log_info "Scanner bin contents: $(ls "$HOME/.sonar/sonar-scanner/bin/" 2>/dev/null | tr '\n' ' ')"
     log_success "Scanner installed"
   fi
 
   SONAR_SCANNER="$SCANNER_DIR/bin/$_SCANNER_BIN"
-  # Fallback to non-.bat if .bat doesn't exist
-  if [[ ! -f "$SONAR_SCANNER" ]] && [[ -f "$SCANNER_DIR/bin/sonar-scanner" ]]; then
-    SONAR_SCANNER="$SCANNER_DIR/bin/sonar-scanner"
+  # Fallback: try other binary names
+  if [[ ! -f "$SONAR_SCANNER" ]]; then
+    if [[ -f "$SCANNER_DIR/bin/sonar-scanner" ]]; then
+      SONAR_SCANNER="$SCANNER_DIR/bin/sonar-scanner"
+    elif [[ -f "$SCANNER_DIR/bin/sonar-scanner.bat" ]]; then
+      SONAR_SCANNER="$SCANNER_DIR/bin/sonar-scanner.bat"
+    else
+      log_error "Scanner binary not found in $SCANNER_DIR/bin/"
+      log_error "Directory contents: $(ls -la "$SCANNER_DIR/bin/" 2>/dev/null)"
+      exit 1
+    fi
   fi
   cd - > /dev/null
 fi
