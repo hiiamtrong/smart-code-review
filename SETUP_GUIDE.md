@@ -136,6 +136,7 @@ AI Gateway URL: https://dashboard.code-review.sotatek.works/api/review
 AI Gateway API Key: [Ask your team lead for this]
 AI Model (optional): [Press Enter to use default]
 AI Provider (optional): [Press Enter to use default]
+Enable AI Review for local commits? [Y/n]: y
 ```
 
 ### 2. SonarQube Configuration
@@ -266,6 +267,12 @@ ai-review config <key> <value>
 
 Examples:
 ```bash
+# Disable AI review (keep SonarQube only)
+ai-review config ENABLE_AI_REVIEW false
+
+# Re-enable AI review
+ai-review config ENABLE_AI_REVIEW true
+
 # Change SonarQube URL
 ai-review config SONAR_HOST_URL https://sonarqube.sotatek.works
 

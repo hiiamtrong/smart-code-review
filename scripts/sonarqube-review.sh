@@ -270,49 +270,8 @@ else
   # Force full analysis of all code (not just new code)
   SONAR_OPTS="$SONAR_OPTS -Dsonar.qualitygate.wait=false"
 
-  # Differential Analysis: Only scan changed files
-
-  # Get current branch
-  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-
-  # Get base branch from git config (user-configured)
-  BASE_BRANCH=$(git config --local aireview.baseBranch 2>/dev/null)
-
-  # If not configured, auto-detect main branch name (could be main, master, or develop)
-  if [[ -z "$BASE_BRANCH" ]]; then
-    if git rev-parse --verify main >/dev/null 2>&1; then
-      BASE_BRANCH="main"
-    elif git rev-parse --verify master >/dev/null 2>&1; then
-      BASE_BRANCH="master"
-    elif git rev-parse --verify develop >/dev/null 2>&1; then
-      BASE_BRANCH="develop"
-    fi
-  fi
-
-  # Legacy variable for backward compatibility
-  MAIN_BRANCH="$BASE_BRANCH"
-
-  FILES_TO_SCAN=""
-
-  # Check if we're on the base branch
-  if [[ "$CURRENT_BRANCH" == "$BASE_BRANCH" ]]; then
-    # On base branch: Only scan staged files (pre-commit)
-    FILES_TO_SCAN=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
-  else
-    # On feature branch: Scan all changed files compared to base + staged files
-    if [[ -n "$BASE_BRANCH" ]]; then
-      # Get files changed from base branch
-      BRANCH_FILES=$(git diff "$BASE_BRANCH"...HEAD --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
-
-      # Get staged files
-      STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
-
-      # Combine both
-      FILES_TO_SCAN="${BRANCH_FILES}${STAGED_FILES}"
-    else
-      FILES_TO_SCAN=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
-    fi
-  fi
+  # Differential Analysis: Only scan staged files (current commit)
+  FILES_TO_SCAN=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
 
   # Remove duplicates and clean up
   FILES_TO_SCAN=$(echo "$FILES_TO_SCAN" | tr ',' '\n' | sort -u | grep -v '^$' | tr '\n' ',' | sed 's/,$//')
@@ -359,8 +318,8 @@ if command -v timeout &> /dev/null; then
     fi
   fi
 else
-  # Windows Git Bash - run without timeout but show progress
-  echo "[INFO] Running scanner (no timeout on Windows, press Ctrl+C to cancel)..."
+  # No timeout command available (macOS/Windows) - run directly
+  log_info "Running scanner (press Ctrl+C to cancel)..."
   if $SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1; then
     SCANNER_EXIT=0
   else
@@ -461,20 +420,8 @@ DIAGNOSTICS=$(echo "$ISSUES_JSON" | jq -r '[.issues[] | {
 
 # Get changed line ranges from git diff
 get_changed_lines() {
-  local diff_command=""
-  
-  # Use same logic as file detection
-  if [[ "$CURRENT_BRANCH" == "$BASE_BRANCH" ]]; then
-    # On base branch: staged changes only
-    diff_command="git diff --cached -U0"
-  else
-    # On feature branch: all changes from base + staged
-    if [[ -n "$BASE_BRANCH" ]]; then
-      diff_command="git diff $BASE_BRANCH...HEAD -U0"
-    else
-      diff_command="git diff --cached -U0"
-    fi
-  fi
+  # Pre-commit: only staged changes matter
+  local diff_command="git diff --cached -U0"
   
   # Parse diff to extract changed lines
   # Format: file|start_line|line_count (one per hunk)

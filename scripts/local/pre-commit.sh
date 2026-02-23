@@ -102,6 +102,7 @@ load_config() {
   # Set defaults
   AI_MODEL="${AI_MODEL:-gemini-2.0-flash}"
   AI_PROVIDER="${AI_PROVIDER:-google}"
+  ENABLE_AI_REVIEW="${ENABLE_AI_REVIEW:-true}"
   ENABLE_SONARQUBE_LOCAL="${ENABLE_SONARQUBE_LOCAL:-false}"
   SONAR_BLOCK_ON_HOTSPOTS="${SONAR_BLOCK_ON_HOTSPOTS:-true}"
   SONAR_FILTER_CHANGED_LINES_ONLY="${SONAR_FILTER_CHANGED_LINES_ONLY:-true}"
@@ -745,29 +746,13 @@ run_sonarqube_analysis() {
   fi
 
   print_separator
-  echo -e "  ${BOLD}STEP 1/2: SonarQube Static Analysis${NC}"
+  echo -e "  ${BOLD}STEP ${sonar_step}/${total_steps}: SonarQube Static Analysis${NC}"
   print_separator
   echo ""
 
-  # Run SonarQube and capture output + exit code
-  # Use temp file for Windows Git Bash compatibility (TEMP_DIR must be set before use)
-  local temp_dir="${CONFIG_DIR}/temp"
-  mkdir -p "$temp_dir"
-  local temp_output="${temp_dir}/sonar-output.txt"
+  # Run SonarQube directly (real-time output, no buffering)
   local sonar_exit_code=0
-  
-  # Run and capture both output and exit code
-  if bash "$sonar_script" > "$temp_output" 2>&1; then
-    sonar_exit_code=0
-  else
-    sonar_exit_code=$?
-  fi
-
-  # Display the captured output (fixes Windows: TEMP_DIR was undefined, so output went to wrong path)
-  if [[ -f "$temp_output" ]]; then
-    cat "$temp_output"
-    rm -f "$temp_output"
-  fi
+  bash "$sonar_script" 2>&1 || sonar_exit_code=$?
 
   if [[ $sonar_exit_code -eq 0 ]]; then
     return 0
@@ -856,25 +841,54 @@ main() {
   echo -e "${BOLD}AI Review${NC} v$(cat "$CONFIG_DIR/version" 2>/dev/null || echo "1.0") - Pre-commit code review"
   echo ""
 
-  # Check if SonarQube is enabled locally
-  if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
-    # Step 1: Run SonarQube (blocks on errors, exits if failed)
-    run_sonarqube_analysis
+  # Determine which steps are enabled
+  local sonar_enabled="$ENABLE_SONARQUBE_LOCAL"
+  local ai_enabled="$ENABLE_AI_REVIEW"
 
-    # Step 2 header
-    echo ""
-    print_separator
-    echo -e "  ${BOLD}STEP 2/2: AI-Powered Code Review${NC}"
-    print_separator
-    echo ""
+  # If both are disabled, nothing to do
+  if [[ "$sonar_enabled" != "true" && "$ai_enabled" != "true" ]]; then
+    log_info "Both AI Review and SonarQube are disabled. Nothing to check."
+    log_info "Enable: ai-review config set ENABLE_AI_REVIEW true"
+    exit 0
   fi
 
-  get_staged_diff
-  filter_ignored_files
-  format_diff
-  detect_language
-  call_ai_gateway
-  display_results
+  # Determine step numbering
+  local total_steps=0
+  local sonar_step=0
+  local ai_step=0
+  if [[ "$sonar_enabled" == "true" ]]; then
+    total_steps=$((total_steps + 1))
+    sonar_step=$total_steps
+  fi
+  if [[ "$ai_enabled" == "true" ]]; then
+    total_steps=$((total_steps + 1))
+    ai_step=$total_steps
+  fi
+
+  # Step: Run SonarQube (if enabled)
+  if [[ "$sonar_enabled" == "true" ]]; then
+    run_sonarqube_analysis
+
+    if [[ "$ai_enabled" == "true" ]]; then
+      echo ""
+      print_separator
+      echo -e "  ${BOLD}STEP ${ai_step}/${total_steps}: AI-Powered Code Review${NC}"
+      print_separator
+      echo ""
+    fi
+  fi
+
+  # Step: Run AI Review (if enabled)
+  if [[ "$ai_enabled" == "true" ]]; then
+    get_staged_diff
+    filter_ignored_files
+    format_diff
+    detect_language
+    call_ai_gateway
+    display_results
+  else
+    log_info "AI Review disabled (enable: ai-review config set ENABLE_AI_REVIEW true)"
+  fi
 }
 
 main

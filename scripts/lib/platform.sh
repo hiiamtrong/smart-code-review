@@ -136,12 +136,11 @@ check_color_support() {
     :
   fi
 
-  # Check TERM variable
-  case "${TERM:-}" in
-    dumb|"")
-      NO_COLOR=1
-      ;;
-  esac
+  # Only disable colors for explicitly dumb terminals
+  # Empty TERM is common in git hooks and IDE terminals but ANSI still works
+  if [[ "${TERM:-}" == "dumb" ]]; then
+    NO_COLOR=1
+  fi
 }
 
 # Apply color settings - call after defining color variables

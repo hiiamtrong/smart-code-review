@@ -102,7 +102,7 @@ cmd_setup() {
   mkdir -p "$CONFIG_DIR"
 
   # Load existing values if config exists
-  local OLD_URL="" OLD_KEY="" OLD_MODEL="" OLD_PROVIDER=""
+  local OLD_URL="" OLD_KEY="" OLD_MODEL="" OLD_PROVIDER="" OLD_ENABLE_AI=""
   local OLD_ENABLE_SONAR="" OLD_SONAR_URL="" OLD_SONAR_TOKEN="" OLD_SONAR_HOTSPOTS=""
   if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE" 2>/dev/null || true
@@ -110,6 +110,7 @@ cmd_setup() {
     OLD_KEY="$AI_GATEWAY_API_KEY"
     OLD_MODEL="$AI_MODEL"
     OLD_PROVIDER="$AI_PROVIDER"
+    OLD_ENABLE_AI="$ENABLE_AI_REVIEW"
     OLD_ENABLE_SONAR="$ENABLE_SONARQUBE_LOCAL"
     OLD_SONAR_URL="$SONAR_HOST_URL"
     OLD_SONAR_TOKEN="$SONAR_TOKEN"
@@ -166,6 +167,23 @@ cmd_setup() {
   local default_provider="${OLD_PROVIDER:-google}"
   read -p "  AI Provider [$default_provider]: " AI_PROVIDER
   AI_PROVIDER="${AI_PROVIDER:-$default_provider}"
+
+  # --- AI Review Toggle ---
+  echo ""
+  local default_enable_ai="${OLD_ENABLE_AI:-true}"
+  if [[ "$default_enable_ai" == "true" ]]; then
+    read -p "  Enable AI Review for local commits? [Y/n]: " enable_ai
+    enable_ai="${enable_ai:-y}"
+  else
+    read -p "  Enable AI Review for local commits? [y/N]: " enable_ai
+    enable_ai="${enable_ai:-n}"
+  fi
+
+  if [[ "$enable_ai" == "y" || "$enable_ai" == "Y" ]]; then
+    ENABLE_AI_REVIEW="true"
+  else
+    ENABLE_AI_REVIEW="false"
+  fi
 
   # --- SonarQube ---
   echo ""
@@ -232,6 +250,7 @@ AI_GATEWAY_URL="$AI_GATEWAY_URL"
 AI_GATEWAY_API_KEY="$AI_GATEWAY_API_KEY"
 AI_MODEL="$AI_MODEL"
 AI_PROVIDER="$AI_PROVIDER"
+ENABLE_AI_REVIEW="$ENABLE_AI_REVIEW"
 ENABLE_SONARQUBE_LOCAL="$ENABLE_SONARQUBE_LOCAL"
 EOF
 
@@ -955,6 +974,7 @@ ${YELLOW}CONFIG KEYS:${NC}
     AI_GATEWAY_API_KEY          AI Gateway authentication key
     AI_MODEL                    AI model (default: gemini-2.0-flash)
     AI_PROVIDER                 AI provider (default: google)
+    ENABLE_AI_REVIEW            Enable AI review for local commits (true/false)
     ENABLE_SONARQUBE_LOCAL      Enable SonarQube local analysis (true/false)
     SONAR_HOST_URL              SonarQube server URL
     SONAR_TOKEN                 SonarQube authentication token
@@ -968,6 +988,7 @@ ${YELLOW}EXAMPLES:${NC}
     ai-review setup                                          # Interactive setup
     ai-review install                                        # Enable for current repo
     ai-review config set AI_MODEL gpt-4                      # Change AI model
+    ai-review config set ENABLE_AI_REVIEW false                # Disable AI review
     ai-review config set ENABLE_SONARQUBE_LOCAL true          # Enable SonarQube
     git config --local aireview.sonarProjectKey "my-project"  # Set project key
     ai-review status                                         # Check setup
