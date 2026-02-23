@@ -355,9 +355,15 @@ echo "Running SonarQube scanner... (this may take 30-60 seconds)"
 echo ""
 
 # Run with timeout to prevent hanging forever (2 minutes max)
-# Check if timeout command exists (Linux/MacOS have it, Windows Git Bash might not)
-if command -v timeout &> /dev/null; then
-  # Linux/MacOS with timeout command
+# Note: Windows Git Bash has timeout.exe (a delay command, NOT GNU timeout)
+# Only use timeout on Linux where GNU coreutils timeout is available
+USE_TIMEOUT=false
+if [[ "$OSTYPE" == "linux-gnu"* ]] && command -v timeout &> /dev/null; then
+  USE_TIMEOUT=true
+fi
+
+if [[ "$USE_TIMEOUT" == "true" ]]; then
+  # Linux with GNU timeout
   if timeout 120 $SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1; then
     SCANNER_EXIT=0
   else
