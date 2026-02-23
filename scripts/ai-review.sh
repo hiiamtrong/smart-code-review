@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
+# Source platform abstraction layer if available
+_AI_REVIEW_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_AI_REVIEW_SCRIPT_DIR/lib/platform.sh" ]]; then
+  source "$_AI_REVIEW_SCRIPT_DIR/lib/platform.sh"
+elif [[ -f "$_AI_REVIEW_SCRIPT_DIR/platform.sh" ]]; then
+  source "$_AI_REVIEW_SCRIPT_DIR/platform.sh"
+fi
+
 # Get diff for review
 echo "Getting diff for review..."
 
@@ -91,7 +99,11 @@ if [[ -f "$IGNORE_FILE" ]]; then
   echo "Applying ignore patterns from .aireviewignore..."
   
   # Use temp file to avoid "Argument list too long" error
-  TEMP_DIFF=$(mktemp)
+  if type safe_mktemp &>/dev/null; then
+    TEMP_DIFF=$(safe_mktemp "ai-ignore-diff")
+  else
+    TEMP_DIFF=$(mktemp 2>/dev/null || mktemp -t ai-ignore-diff 2>/dev/null)
+  fi
   echo "$DIFF" > "$TEMP_DIFF"
   
   FILTERED_DIFF=$(bash "$SCRIPT_DIR/filter-ignored-files.sh" "$TEMP_DIFF" "$IGNORE_FILE")
@@ -125,7 +137,11 @@ echo "Sending to AI for review..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SCRIPT_DIR/showlinenum.awk" ]]; then
   # Use temp file to avoid pipe buffer issues with large diffs
-  TEMP_DIFF_INPUT=$(mktemp)
+  if type safe_mktemp &>/dev/null; then
+    TEMP_DIFF_INPUT=$(safe_mktemp "ai-numbered-diff")
+  else
+    TEMP_DIFF_INPUT=$(mktemp 2>/dev/null || mktemp -t ai-numbered-diff 2>/dev/null)
+  fi
   echo "$DIFF" > "$TEMP_DIFF_INPUT"
   NUMBERED_DIFF=$(awk -f "$SCRIPT_DIR/showlinenum.awk" "$TEMP_DIFF_INPUT")
   rm -f "$TEMP_DIFF_INPUT"
@@ -184,7 +200,11 @@ echo "   - PR: ${PR_NUMBER}"
 echo "   - Author: $AUTHOR_NAME <$AUTHOR_EMAIL>"
 
 # Save diff to temporary file for upload
-DIFF_FILE=$(mktemp)
+if type safe_mktemp &>/dev/null; then
+  DIFF_FILE=$(safe_mktemp "ai-upload-diff")
+else
+  DIFF_FILE=$(mktemp 2>/dev/null || mktemp -t ai-upload-diff 2>/dev/null)
+fi
 echo "$DIFF_FOR_AI" > "$DIFF_FILE"
 
 # Create JSON payload without git_diff (will be sent as file)
@@ -360,6 +380,7 @@ if [[ -n "$GITHUB_TOKEN" ]]; then
         if [[ -n "$OVERVIEW_COMMENT_IDS" ]]; then
           echo "Deleting existing AI overview comments..."
           while IFS= read -r comment_id; do
+            comment_id="${comment_id%$'\r'}"
             if [[ -n "$comment_id" && "$comment_id" != "null" ]]; then
               curl -s -X DELETE \
                 -H "Authorization: token $GITHUB_TOKEN" \

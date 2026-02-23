@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
+# Source platform abstraction layer
+INSTALL_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$INSTALL_SCRIPT_DIR/../lib/platform.sh" ]]; then
+  source "$INSTALL_SCRIPT_DIR/../lib/platform.sh"
+elif [[ -f "$INSTALL_SCRIPT_DIR/platform.sh" ]]; then
+  source "$INSTALL_SCRIPT_DIR/platform.sh"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -8,6 +16,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
+
+# Apply color settings (disables colors if terminal doesn't support them)
+if type apply_color_settings &>/dev/null; then
+  apply_color_settings
+fi
 
 # Installation paths
 CONFIG_DIR="$HOME/.config/ai-review"
@@ -52,8 +65,11 @@ detect_os() {
         OS="linux"
       fi
       ;;
+    MINGW*|MSYS*|CYGWIN*)
+      OS="windows"
+      ;;
     *)
-      log_error "Unsupported operating system"
+      log_error "Unsupported operating system: $(uname -s)"
       exit 1
       ;;
   esac
@@ -93,8 +109,33 @@ install_dependencies() {
       linux|wsl)
         sudo apt-get update && sudo apt-get install -y jq
         ;;
+      windows)
+        # Try package managers in order of preference
+        if command -v winget &>/dev/null; then
+          log_info "Installing jq via winget..."
+          winget install jqlang.jq --silent 2>/dev/null || true
+        elif command -v choco &>/dev/null; then
+          log_info "Installing jq via chocolatey..."
+          choco install jq -y 2>/dev/null || true
+        elif command -v scoop &>/dev/null; then
+          log_info "Installing jq via scoop..."
+          scoop install jq 2>/dev/null || true
+        else
+          # Manual download as last resort
+          log_info "Downloading jq manually..."
+          local jq_url="https://github.com/jqlang/jq/releases/latest/download/jq-win64.exe"
+          mkdir -p "$BIN_DIR"
+          curl -sSL "$jq_url" -o "$BIN_DIR/jq.exe"
+          log_success "jq installed to $BIN_DIR/jq.exe"
+        fi
+        ;;
     esac
-    log_success "jq installed"
+    # Verify installation
+    if command -v jq &>/dev/null; then
+      log_success "jq installed"
+    else
+      log_warn "jq installation may require restarting your terminal"
+    fi
   else
     log_success "jq is installed"
   fi
@@ -140,13 +181,18 @@ install_scripts() {
     cp "$SCRIPT_DIR/pre-commit.sh" "$HOOKS_DIR/pre-commit.sh"
     cp "$SCRIPT_DIR/enable-local-sonarqube.sh" "$HOOKS_DIR/enable-local-sonarqube.sh"
     # Copy SonarQube scripts from parent scripts directory
-    local SONAR_REVIEW_SRC="$(dirname "$SCRIPT_DIR")/sonarqube-review.sh"
-    local SHOWLINENUM_SRC="$(dirname "$SCRIPT_DIR")/showlinenum.awk"
+    local PARENT_SCRIPT_DIR="$(dirname "$SCRIPT_DIR")"
+    local SONAR_REVIEW_SRC="$PARENT_SCRIPT_DIR/sonarqube-review.sh"
+    local SHOWLINENUM_SRC="$PARENT_SCRIPT_DIR/showlinenum.awk"
     if [[ -f "$SONAR_REVIEW_SRC" ]]; then
       cp "$SONAR_REVIEW_SRC" "$HOOKS_DIR/sonarqube-review.sh"
     fi
     if [[ -f "$SHOWLINENUM_SRC" ]]; then
       cp "$SHOWLINENUM_SRC" "$HOOKS_DIR/showlinenum.awk"
+    fi
+    # Copy platform abstraction library
+    if [[ -f "$PARENT_SCRIPT_DIR/lib/platform.sh" ]]; then
+      cp "$PARENT_SCRIPT_DIR/lib/platform.sh" "$HOOKS_DIR/platform.sh"
     fi
   else
     # Download from remote
@@ -155,13 +201,15 @@ install_scripts() {
     curl -sSL "$REPO_URL/scripts/local/enable-local-sonarqube.sh" -o "$HOOKS_DIR/enable-local-sonarqube.sh"
     curl -sSL "$REPO_URL/scripts/sonarqube-review.sh" -o "$HOOKS_DIR/sonarqube-review.sh" 2>/dev/null || true
     curl -sSL "$REPO_URL/scripts/showlinenum.awk" -o "$HOOKS_DIR/showlinenum.awk" 2>/dev/null || true
+    curl -sSL "$REPO_URL/scripts/lib/platform.sh" -o "$HOOKS_DIR/platform.sh" 2>/dev/null || true
   fi
 
-  chmod +x "$BIN_DIR/ai-review"
-  chmod +x "$HOOKS_DIR/pre-commit.sh"
-  chmod +x "$HOOKS_DIR/enable-local-sonarqube.sh"
-  [[ -f "$HOOKS_DIR/sonarqube-review.sh" ]] && chmod +x "$HOOKS_DIR/sonarqube-review.sh"
-  [[ -f "$HOOKS_DIR/showlinenum.awk" ]] && chmod +x "$HOOKS_DIR/showlinenum.awk"
+  # Set executable permissions (no-op on Windows NTFS but harmless)
+  chmod +x "$BIN_DIR/ai-review" 2>/dev/null || true
+  chmod +x "$HOOKS_DIR/pre-commit.sh" 2>/dev/null || true
+  chmod +x "$HOOKS_DIR/enable-local-sonarqube.sh" 2>/dev/null || true
+  [[ -f "$HOOKS_DIR/sonarqube-review.sh" ]] && chmod +x "$HOOKS_DIR/sonarqube-review.sh" 2>/dev/null || true
+  [[ -f "$HOOKS_DIR/showlinenum.awk" ]] && chmod +x "$HOOKS_DIR/showlinenum.awk" 2>/dev/null || true
 
   log_success "Installed ai-review CLI to $BIN_DIR/ai-review"
   log_success "Installed hook template to $HOOKS_DIR/pre-commit.sh"
@@ -218,7 +266,7 @@ AI_MODEL="$AI_MODEL"
 AI_PROVIDER="$AI_PROVIDER"
 EOF
 
-  chmod 600 "$CONFIG_DIR/config"
+  chmod 600 "$CONFIG_DIR/config" 2>/dev/null || true
   log_success "Configuration saved to $CONFIG_DIR/config"
 }
 
@@ -230,6 +278,26 @@ setup_path() {
   # Check if already in PATH
   if echo "$PATH" | grep -q "$BIN_DIR"; then
     log_success "$BIN_DIR is already in PATH"
+    return
+  fi
+
+  if [[ "$OS" == "windows" ]]; then
+    # On Windows Git Bash, update .bashrc (Git Bash uses this)
+    local bash_profile="$HOME/.bashrc"
+    if [[ ! -f "$bash_profile" ]]; then
+      bash_profile="$HOME/.bash_profile"
+    fi
+    if [[ -n "$bash_profile" ]]; then
+      if ! grep -q "export PATH=\"\$HOME/.local/bin:\$PATH\"" "$bash_profile" 2>/dev/null; then
+        echo "" >> "$bash_profile"
+        echo "# Added by ai-review installer" >> "$bash_profile"
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$bash_profile"
+        log_success "Added $BIN_DIR to PATH in $bash_profile"
+      else
+        log_success "PATH export already exists in $bash_profile"
+      fi
+    fi
+    log_info "For PowerShell/CMD, run install.ps1 which sets up Windows PATH"
     return
   fi
 

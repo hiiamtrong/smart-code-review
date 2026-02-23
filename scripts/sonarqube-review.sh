@@ -4,6 +4,16 @@ set -e
 # SonarQube Code Review Integration
 # This script runs SonarQube analysis and converts results to reviewdog format
 
+# Source platform abstraction layer
+_SONAR_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_SONAR_SCRIPT_DIR/lib/platform.sh" ]]; then
+  source "$_SONAR_SCRIPT_DIR/lib/platform.sh"
+elif [[ -f "$_SONAR_SCRIPT_DIR/platform.sh" ]]; then
+  source "$_SONAR_SCRIPT_DIR/platform.sh"
+elif [[ -f "$HOME/.config/ai-review/hooks/platform.sh" ]]; then
+  source "$HOME/.config/ai-review/hooks/platform.sh"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -12,6 +22,11 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
+
+# Apply color settings if platform.sh is loaded
+if type apply_color_settings &>/dev/null; then
+  apply_color_settings
+fi
 
 # ============================================
 # Helper Functions
@@ -71,6 +86,7 @@ SONAR_PROJECT_KEY="${SONAR_PROJECT_KEY:-}"
 SONAR_PROJECT_NAME="${SONAR_PROJECT_NAME:-$(basename "$(git rev-parse --show-toplevel)")}"
 SONAR_PROJECT_VERSION="${SONAR_PROJECT_VERSION:-1.0}"
 SONAR_SOURCES="${SONAR_SOURCES:-.}"
+SONAR_FILTER_CHANGED_LINES_ONLY="${SONAR_FILTER_CHANGED_LINES_ONLY:-true}"
 
 # Default exclusions
 DEFAULT_EXCLUSIONS="**/node_modules/**,**/dist/**,**/build/**,**/target/**,**/vendor/**,**/*.test.js,**/*.spec.ts,**/*.test.ts,**/*.spec.js"
@@ -114,10 +130,19 @@ log_info "Project: ${BOLD}$SONAR_PROJECT_KEY${NC} → $SONAR_HOST_URL"
 # ============================================
 
 SONAR_SCANNER=""
+
+# Determine scanner binary name based on platform
+_SCANNER_BIN="sonar-scanner"
+if type is_windows &>/dev/null && is_windows; then
+  _SCANNER_BIN="sonar-scanner.bat"
+fi
+
 if command -v sonar-scanner &> /dev/null; then
   SONAR_SCANNER="sonar-scanner"
 elif command -v sonar-scanner-cli &> /dev/null; then
   SONAR_SCANNER="sonar-scanner-cli"
+elif [[ -f "$HOME/.sonar/sonar-scanner/bin/$_SCANNER_BIN" ]]; then
+  SONAR_SCANNER="$HOME/.sonar/sonar-scanner/bin/$_SCANNER_BIN"
 elif [[ -f "$HOME/.sonar/sonar-scanner/bin/sonar-scanner" ]]; then
   SONAR_SCANNER="$HOME/.sonar/sonar-scanner/bin/sonar-scanner"
 else
@@ -129,23 +154,46 @@ else
   cd "$HOME/.sonar"
 
   if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
+    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-linux-x64.zip"
   elif [[ "$OSTYPE" == "darwin"* ]]; then
-    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-macosx.zip"
+    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-macosx-x64.zip"
+  elif [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "mingw"* ]] || [[ "$OSTYPE" == "cygwin"* ]]; then
+    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-windows-x64.zip"
   else
     SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}.zip"
   fi
 
   if [[ ! -d "$SCANNER_DIR" ]]; then
-    log_info "Downloading SonarQube Scanner..."
+    log_info "Downloading SonarQube Scanner ($SCANNER_ZIP)..."
     curl -sSL "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCANNER_ZIP}" -o scanner.zip
-    unzip -q scanner.zip
-    mv sonar-scanner-${SCANNER_VERSION}* sonar-scanner
-    rm scanner.zip
+
+    # Use safe_unzip if available, otherwise try unzip then PowerShell fallback
+    if type safe_unzip &>/dev/null; then
+      safe_unzip scanner.zip "$HOME/.sonar"
+    elif command -v unzip &>/dev/null; then
+      unzip -q scanner.zip
+    elif command -v powershell.exe &>/dev/null; then
+      log_info "Using PowerShell to extract scanner..."
+      win_zip=$(cygpath -w "$HOME/.sonar/scanner.zip" 2>/dev/null || echo "$HOME/.sonar/scanner.zip")
+      win_dest=$(cygpath -w "$HOME/.sonar" 2>/dev/null || echo "$HOME/.sonar")
+      powershell.exe -NoProfile -Command "Expand-Archive -Path '$win_zip' -DestinationPath '$win_dest' -Force"
+    else
+      log_error "Cannot extract scanner: neither unzip nor PowerShell available"
+      rm -f scanner.zip
+      cd - > /dev/null
+      exit 1
+    fi
+
+    mv sonar-scanner-${SCANNER_VERSION}* sonar-scanner 2>/dev/null || true
+    rm -f scanner.zip
     log_success "Scanner installed"
   fi
 
-  SONAR_SCANNER="$SCANNER_DIR/bin/sonar-scanner"
+  SONAR_SCANNER="$SCANNER_DIR/bin/$_SCANNER_BIN"
+  # Fallback to non-.bat if .bat doesn't exist
+  if [[ ! -f "$SONAR_SCANNER" ]] && [[ -f "$SCANNER_DIR/bin/sonar-scanner" ]]; then
+    SONAR_SCANNER="$SCANNER_DIR/bin/sonar-scanner"
+  fi
   cd - > /dev/null
 fi
 
@@ -222,49 +270,8 @@ else
   # Force full analysis of all code (not just new code)
   SONAR_OPTS="$SONAR_OPTS -Dsonar.qualitygate.wait=false"
 
-  # Differential Analysis: Only scan changed files
-
-  # Get current branch
-  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-
-  # Get base branch from git config (user-configured)
-  BASE_BRANCH=$(git config --local aireview.baseBranch 2>/dev/null)
-
-  # If not configured, auto-detect main branch name (could be main, master, or develop)
-  if [[ -z "$BASE_BRANCH" ]]; then
-    if git rev-parse --verify main >/dev/null 2>&1; then
-      BASE_BRANCH="main"
-    elif git rev-parse --verify master >/dev/null 2>&1; then
-      BASE_BRANCH="master"
-    elif git rev-parse --verify develop >/dev/null 2>&1; then
-      BASE_BRANCH="develop"
-    fi
-  fi
-
-  # Legacy variable for backward compatibility
-  MAIN_BRANCH="$BASE_BRANCH"
-
-  FILES_TO_SCAN=""
-
-  # Check if we're on the base branch
-  if [[ "$CURRENT_BRANCH" == "$BASE_BRANCH" ]]; then
-    # On base branch: Only scan staged files (pre-commit)
-    FILES_TO_SCAN=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
-  else
-    # On feature branch: Scan all changed files compared to base + staged files
-    if [[ -n "$BASE_BRANCH" ]]; then
-      # Get files changed from base branch
-      BRANCH_FILES=$(git diff "$BASE_BRANCH"...HEAD --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
-
-      # Get staged files
-      STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
-
-      # Combine both
-      FILES_TO_SCAN="${BRANCH_FILES}${STAGED_FILES}"
-    else
-      FILES_TO_SCAN=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
-    fi
-  fi
+  # Differential Analysis: Only scan staged files (current commit)
+  FILES_TO_SCAN=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
 
   # Remove duplicates and clean up
   FILES_TO_SCAN=$(echo "$FILES_TO_SCAN" | tr ',' '\n' | sort -u | grep -v '^$' | tr '\n' ',' | sed 's/,$//')
@@ -279,9 +286,46 @@ else
 fi
 
 # Run scanner (suppress all logs except errors)
-SCANNER_LOG=$(mktemp)
-$SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1
-SCANNER_EXIT=$?
+if type safe_mktemp &>/dev/null; then
+  SCANNER_LOG=$(safe_mktemp "sonar-scanner")
+else
+  SCANNER_LOG=$(mktemp 2>/dev/null || mktemp -t sonar-scanner 2>/dev/null)
+fi
+
+echo "Running SonarQube scanner... (this may take 30-60 seconds)"
+echo ""
+
+# Run with timeout to prevent hanging forever (2 minutes max)
+# Check if timeout command exists (Linux/MacOS have it, Windows Git Bash might not)
+if command -v timeout &> /dev/null; then
+  # Linux/MacOS with timeout command
+  if timeout 120 $SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1; then
+    SCANNER_EXIT=0
+  else
+    SCANNER_EXIT=$?
+    if [[ $SCANNER_EXIT -eq 124 ]]; then
+      echo ""
+      log_error "SonarQube scanner timed out after 2 minutes"
+      echo "This might indicate:"
+      echo "  - Network issues connecting to SonarQube server"
+      echo "  - Too many files to scan"
+      echo "  - SonarQube server is slow/unresponsive"
+      echo ""
+      echo "Suggestion: Disable local SonarQube and use CI/CD instead"
+      echo "  Run: ai-review config set ENABLE_SONARQUBE_LOCAL false"
+      rm -f "$SCANNER_LOG"
+      exit 1
+    fi
+  fi
+else
+  # No timeout command available (macOS/Windows) - run directly
+  log_info "Running scanner (press Ctrl+C to cancel)..."
+  if $SONAR_SCANNER $SONAR_OPTS > "$SCANNER_LOG" 2>&1; then
+    SCANNER_EXIT=0
+  else
+    SCANNER_EXIT=$?
+  fi
+fi
 
 # Only show real errors (not Java version warnings)
 grep -E "(ERROR|FAIL)" "$SCANNER_LOG" | grep -v "Java 17 scanner" || true
@@ -323,7 +367,6 @@ ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" \
 
 if [[ -z "$ISSUES_JSON" || "$ISSUES_JSON" == "null" ]]; then
   log_warn "Could not fetch issues from SonarQube"
-  log_info "Creating empty report..."
   cat > sonarqube-output.jsonl << EOF
 {
   "source": {"name": "sonarqube", "url": "$SONAR_HOST_URL"},
@@ -371,6 +414,79 @@ DIAGNOSTICS=$(echo "$ISSUES_JSON" | jq -r '[.issues[] | {
   suggestions: []
 }]' 2>/dev/null || echo "[]")
 
+# ============================================
+# Filter Issues by Changed Lines Only
+# ============================================
+
+# Get changed line ranges from git diff
+get_changed_lines() {
+  # Pre-commit: only staged changes matter
+  local diff_command="git diff --cached -U0"
+  
+  # Parse diff to extract changed lines
+  # Format: file|start_line|line_count (one per hunk)
+  # Note: Uses POSIX awk (compatible with BSD awk on macOS, mawk on Linux)
+  $diff_command | awk '
+    /^diff --git/ {
+      # Extract filename from "diff --git a/path b/path"
+      split($0, parts, " ")
+      # parts[4] is "b/path"
+      current_file = substr(parts[4], 3)
+    }
+    /^@@/ {
+      # Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
+      # We care about +new_start,new_count
+      for (i = 1; i <= NF; i++) {
+        if (substr($i, 1, 1) == "+") {
+          plus_part = substr($i, 2)
+          split(plus_part, nums, ",")
+          start_line = nums[1] + 0
+          line_count = (nums[2] != "" ? nums[2] + 0 : 1)
+          if (current_file != "" && start_line > 0) {
+            print current_file "|" start_line "|" line_count
+          }
+          break
+        }
+      }
+    }
+  '
+}
+
+# Filter diagnostics to only include issues on changed lines (single jq pass)
+filter_diagnostics_by_changed_lines() {
+  local diagnostics="$1"
+  local changed_lines="$2"
+
+  # If no changed lines info or diagnostics is empty, return as-is
+  if [[ -z "$changed_lines" || "$diagnostics" == "[]" ]]; then
+    echo "$diagnostics"
+    return
+  fi
+
+  # Build ranges as JSON array: [{"f":"file","s":start,"e":end}, ...]
+  local ranges_json
+  ranges_json=$(echo "$changed_lines" | awk -F'|' '{printf "{\"f\":\"%s\",\"s\":%d,\"e\":%d}\n", $1, $2, $2+$3-1}' | jq -s '.')
+
+  # Filter in a single jq pass
+  echo "$diagnostics" | jq --argjson ranges "$ranges_json" \
+    '[.[] | . as $issue | select(any($ranges[]; .f == $issue.location.path and $issue.location.range.start.line >= .s and $issue.location.range.start.line <= .e))]'
+}
+
+# Apply filtering (only if enabled)
+if [[ "$SONAR_FILTER_CHANGED_LINES_ONLY" == "true" ]]; then
+  CHANGED_LINES=$(get_changed_lines)
+  
+  if [[ -n "$CHANGED_LINES" ]]; then
+    ORIGINAL_COUNT=$(echo "$DIAGNOSTICS" | jq 'length' 2>/dev/null || echo "0")
+    DIAGNOSTICS=$(filter_diagnostics_by_changed_lines "$DIAGNOSTICS" "$CHANGED_LINES")
+    FILTERED_COUNT=$(echo "$DIAGNOSTICS" | jq 'length' 2>/dev/null || echo "0")
+    
+    if [[ "$ORIGINAL_COUNT" -gt "$FILTERED_COUNT" ]]; then
+      log_info "Filtered out $(($ORIGINAL_COUNT - $FILTERED_COUNT)) issue(s) from unchanged lines"
+    fi
+  fi
+fi
+
 # Create final reviewdog format
 cat > sonarqube-output.jsonl << EOF
 {
@@ -406,7 +522,7 @@ if [[ "$ISSUE_COUNT" -gt 0 ]]; then
 
   # Display ERROR issues
   if [[ "$ERROR_COUNT" -gt 0 ]]; then
-    echo "$DIAGNOSTICS" | jq -c '.[] | select(.severity == "ERROR")' | while read -r issue; do
+    echo "$DIAGNOSTICS" | jq -c '.[] | select(.severity == "ERROR")' | tr -d '\r' | while read -r issue; do
       local_msg=$(echo "$issue" | jq -r '.message // ""')
       local_file=$(echo "$issue" | jq -r '.location.path // "unknown"')
       local_line=$(echo "$issue" | jq -r '.location.range.start.line // 0')
@@ -417,7 +533,7 @@ if [[ "$ISSUE_COUNT" -gt 0 ]]; then
 
   # Display WARNING issues
   if [[ "$WARNING_COUNT" -gt 0 ]]; then
-    echo "$DIAGNOSTICS" | jq -c '.[] | select(.severity == "WARNING")' | while read -r issue; do
+    echo "$DIAGNOSTICS" | jq -c '.[] | select(.severity == "WARNING")' | tr -d '\r' | while read -r issue; do
       local_msg=$(echo "$issue" | jq -r '.message // ""')
       local_file=$(echo "$issue" | jq -r '.location.path // "unknown"')
       local_line=$(echo "$issue" | jq -r '.location.range.start.line // 0')
@@ -428,7 +544,7 @@ if [[ "$ISSUE_COUNT" -gt 0 ]]; then
 
   # Display INFO issues (only first 3 to avoid clutter)
   if [[ "$INFO_COUNT" -gt 0 ]]; then
-    echo "$DIAGNOSTICS" | jq -c '[.[] | select(.severity == "INFO")] | .[:3] | .[]' | while read -r issue; do
+    echo "$DIAGNOSTICS" | jq -c '[.[] | select(.severity == "INFO")] | .[:3] | .[]' | tr -d '\r' | while read -r issue; do
       local_msg=$(echo "$issue" | jq -r '.message // ""')
       local_file=$(echo "$issue" | jq -r '.location.path // "unknown"')
       local_line=$(echo "$issue" | jq -r '.location.range.start.line // 0')
@@ -455,7 +571,7 @@ if [[ "$HOTSPOT_COUNT" -gt 0 ]]; then
   echo ""
 
   # Display hotspots
-  echo "$HOTSPOTS_JSON" | jq -c '.hotspots[:5] | .[]' 2>/dev/null | while read -r hotspot; do
+  echo "$HOTSPOTS_JSON" | jq -c '.hotspots[:5] | .[]' 2>/dev/null | tr -d '\r' | while read -r hotspot; do
     local_msg=$(echo "$hotspot" | jq -r '.message // ""')
     local_file=$(echo "$hotspot" | jq -r '.component | sub("^[^:]+:"; "")' 2>/dev/null)
     local_line=$(echo "$hotspot" | jq -r '.line // 0')
