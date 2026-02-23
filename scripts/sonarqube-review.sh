@@ -147,7 +147,7 @@ elif [[ -f "$HOME/.sonar/sonar-scanner/bin/sonar-scanner" ]]; then
   SONAR_SCANNER="$HOME/.sonar/sonar-scanner/bin/sonar-scanner"
 else
   log_info "Installing SonarQube Scanner..."
-  SCANNER_VERSION="6.2.1.4610"
+  SCANNER_VERSION="5.0.1.3006"
   SCANNER_DIR="$HOME/.sonar/sonar-scanner"
 
   mkdir -p "$HOME/.sonar"
