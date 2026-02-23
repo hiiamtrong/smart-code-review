@@ -166,11 +166,35 @@ else
   if [[ ! -d "$SCANNER_DIR" ]]; then
     log_info "Downloading SonarQube Scanner ($SCANNER_ZIP)..."
     DOWNLOAD_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCANNER_ZIP}"
-    curl -sSL "$DOWNLOAD_URL" -o scanner.zip
+    log_info "URL: $DOWNLOAD_URL"
 
-    # Verify download is a valid zip (zip files start with PK magic bytes)
-    if [[ ! -f scanner.zip ]] || [[ $(wc -c < scanner.zip) -lt 1000 ]]; then
-      log_error "Download failed or file too small"
+    CURL_OUTPUT=$(curl -sSL -w "\n%{http_code}" "$DOWNLOAD_URL" -o scanner.zip 2>&1)
+    CURL_EXIT=$?
+    HTTP_CODE=$(echo "$CURL_OUTPUT" | tail -1)
+    CURL_MSG=$(echo "$CURL_OUTPUT" | head -n -1)
+
+    if [[ $CURL_EXIT -ne 0 ]]; then
+      log_error "curl failed (exit code: $CURL_EXIT)"
+      [[ -n "$CURL_MSG" ]] && log_error "curl output: $CURL_MSG"
+      rm -f scanner.zip
+      cd - > /dev/null
+      exit 1
+    fi
+
+    if [[ "$HTTP_CODE" != "200" ]]; then
+      log_error "Download failed: HTTP $HTTP_CODE"
+      log_error "URL: $DOWNLOAD_URL"
+      rm -f scanner.zip
+      cd - > /dev/null
+      exit 1
+    fi
+
+    # Verify download is a valid zip
+    FILE_SIZE=$(wc -c < scanner.zip 2>/dev/null || echo "0")
+    log_info "Downloaded: ${FILE_SIZE} bytes"
+
+    if [[ ! -f scanner.zip ]] || [[ $FILE_SIZE -lt 1000 ]]; then
+      log_error "Download failed or file too small (${FILE_SIZE} bytes)"
       rm -f scanner.zip
       cd - > /dev/null
       exit 1
@@ -178,7 +202,7 @@ else
 
     ZIP_HEADER=$(head -c 2 scanner.zip 2>/dev/null || true)
     if [[ "$ZIP_HEADER" != "PK" ]]; then
-      log_error "Downloaded file is not a valid zip (possibly HTML error page)"
+      log_error "Downloaded file is not a valid zip (header: $(head -c 20 scanner.zip 2>/dev/null | cat -v))"
       log_error "URL: $DOWNLOAD_URL"
       rm -f scanner.zip
       cd - > /dev/null
