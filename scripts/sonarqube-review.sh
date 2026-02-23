@@ -147,7 +147,7 @@ elif [[ -f "$HOME/.sonar/sonar-scanner/bin/sonar-scanner" ]]; then
   SONAR_SCANNER="$HOME/.sonar/sonar-scanner/bin/sonar-scanner"
 else
   log_info "Installing SonarQube Scanner..."
-  SCANNER_VERSION="5.0.1.3006"
+  SCANNER_VERSION="6.2.1.4610"
   SCANNER_DIR="$HOME/.sonar/sonar-scanner"
 
   mkdir -p "$HOME/.sonar"
@@ -165,8 +165,8 @@ else
 
   if [[ ! -d "$SCANNER_DIR" ]]; then
     log_info "Downloading SonarQube Scanner ($SCANNER_ZIP)..."
-    local download_url="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCANNER_ZIP}"
-    curl -sSL "$download_url" -o scanner.zip
+    DOWNLOAD_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCANNER_ZIP}"
+    curl -sSL "$DOWNLOAD_URL" -o scanner.zip
 
     # Verify download is a valid zip (zip files start with PK magic bytes)
     if [[ ! -f scanner.zip ]] || [[ $(wc -c < scanner.zip) -lt 1000 ]]; then
@@ -176,11 +176,10 @@ else
       exit 1
     fi
 
-    local zip_header
-    zip_header=$(head -c 2 scanner.zip 2>/dev/null || true)
-    if [[ "$zip_header" != "PK" ]]; then
+    ZIP_HEADER=$(head -c 2 scanner.zip 2>/dev/null || true)
+    if [[ "$ZIP_HEADER" != "PK" ]]; then
       log_error "Downloaded file is not a valid zip (possibly HTML error page)"
-      log_error "URL: $download_url"
+      log_error "URL: $DOWNLOAD_URL"
       rm -f scanner.zip
       cd - > /dev/null
       exit 1
@@ -189,10 +188,9 @@ else
     # On Windows, prefer PowerShell Expand-Archive (more reliable than Git Bash unzip)
     if command -v powershell.exe &>/dev/null; then
       log_info "Extracting scanner..."
-      local win_zip win_dest
-      win_zip=$(cygpath -w "$HOME/.sonar/scanner.zip" 2>/dev/null || echo "$HOME/.sonar/scanner.zip")
-      win_dest=$(cygpath -w "$HOME/.sonar" 2>/dev/null || echo "$HOME/.sonar")
-      powershell.exe -NoProfile -Command "Expand-Archive -Path '$win_zip' -DestinationPath '$win_dest' -Force"
+      WIN_ZIP=$(cygpath -w "$HOME/.sonar/scanner.zip" 2>/dev/null || echo "$HOME/.sonar/scanner.zip")
+      WIN_DEST=$(cygpath -w "$HOME/.sonar" 2>/dev/null || echo "$HOME/.sonar")
+      powershell.exe -NoProfile -Command "Expand-Archive -Path '$WIN_ZIP' -DestinationPath '$WIN_DEST' -Force"
     elif type safe_unzip &>/dev/null; then
       safe_unzip scanner.zip "$HOME/.sonar"
     elif command -v unzip &>/dev/null; then
