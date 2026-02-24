@@ -156,7 +156,11 @@ else
   if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-linux-x64.zip"
   elif [[ "$OSTYPE" == "darwin"* ]]; then
-    SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-macosx-x64.zip"
+    if [[ "$(uname -m)" == "arm64" ]]; then
+      SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-macosx-aarch64.zip"
+    else
+      SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-macosx-x64.zip"
+    fi
   elif [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "mingw"* ]] || [[ "$OSTYPE" == "cygwin"* ]]; then
     SCANNER_ZIP="sonar-scanner-cli-${SCANNER_VERSION}-windows-x64.zip"
   else
