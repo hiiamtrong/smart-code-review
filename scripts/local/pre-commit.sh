@@ -3,6 +3,8 @@
 # Pre-commit hook for AI-powered code review
 set -e
 
+VERSION="1.0.10"
+
 # Source platform abstraction layer
 _PRECOMMIT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$_PRECOMMIT_SCRIPT_DIR/../lib/platform.sh" ]]; then
@@ -634,10 +636,12 @@ display_results() {
   local diagnostics=$(echo "$REVIEW_JSON" | jq -c '.diagnostics // []' 2>/dev/null)
 
   if [[ "$diagnostics" == "[]" || "$diagnostics" == "null" ]]; then
+    local _ai_elapsed=$((SECONDS - ${_AI_STEP_START:-$SECONDS}))
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log_success "AI Review: No issues found!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "AI Review completed in ${_ai_elapsed}s"
     echo ""
     if [[ "$ENABLE_SONARQUBE_LOCAL" == "true" ]]; then
       log_success "All checks passed! Commit proceeding..."
@@ -669,9 +673,11 @@ display_results() {
     done
   fi
 
+  local _ai_elapsed=$((SECONDS - ${_AI_STEP_START:-$SECONDS}))
   print_separator
   echo ""
   echo -e "${BOLD}AI Review Summary:${NC} $error_count errors, $warning_count warnings, $info_count info"
+  log_info "AI Review completed in ${_ai_elapsed}s"
   echo ""
 
   # Determine exit code based on errors
@@ -754,14 +760,17 @@ run_sonarqube_analysis() {
 
   # Run SonarQube directly (real-time output, no buffering)
   local sonar_exit_code=0
+  local _sonar_start=$SECONDS
   bash "$sonar_script" 2>&1 || sonar_exit_code=$?
+  local _sonar_elapsed=$((SECONDS - _sonar_start))
 
   if [[ $sonar_exit_code -eq 0 ]]; then
+    log_info "SonarQube completed in ${_sonar_elapsed}s"
     return 0
   elif [[ $sonar_exit_code -eq 1 ]]; then
     echo ""
     print_separator
-    log_error "COMMIT BLOCKED - SonarQube found errors"
+    log_error "COMMIT BLOCKED - SonarQube found errors (${_sonar_elapsed}s)"
     print_separator
     echo ""
     echo "  Fix the errors listed above, then commit again."
@@ -769,7 +778,7 @@ run_sonarqube_analysis() {
     echo ""
     exit 1
   else
-    log_warn "SonarQube failed to run, continuing with AI review"
+    log_warn "SonarQube failed to run after ${_sonar_elapsed}s, continuing with AI review"
   fi
 }
 
@@ -840,7 +849,7 @@ main() {
   load_config
 
   echo ""
-  echo -e "${BOLD}AI Review${NC} v$(cat "$CONFIG_DIR/version" 2>/dev/null || echo "1.0") - Pre-commit code review"
+  echo -e "${BOLD}AI Review${NC} v${VERSION} - Pre-commit code review"
   echo ""
 
   # Determine which steps are enabled
@@ -882,6 +891,7 @@ main() {
 
   # Step: Run AI Review (if enabled)
   if [[ "$ai_enabled" == "true" ]]; then
+    _AI_STEP_START=$SECONDS
     get_staged_diff
     filter_ignored_files
     format_diff
