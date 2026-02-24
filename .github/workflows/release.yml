@@ -11,16 +11,54 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
+      - name: Enforce conventional commits
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          # Skip lint for bot commits ([skip ci])
+          if echo "$COMMIT_MSG" | grep -q "\[skip ci\]"; then
+            echo "Skipping lint for [skip ci] commit"
+            exit 0
+          fi
+          PATTERN='^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?(!)?: .+'
+          if ! echo "$COMMIT_MSG" | grep -qE "$PATTERN"; then
+            echo "ERROR: Commit message does not follow Conventional Commits format"
+            echo "Message: $COMMIT_MSG"
+            echo ""
+            echo "Expected: type(scope)?: description"
+            echo "Types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert"
+            echo ""
+            echo "Version bump rules:"
+            echo "  feat:  -> minor (1.x.0)"
+            echo "  fix:   -> patch (1.0.x)"
+            echo "  feat!: or BREAKING CHANGE -> major (x.0.0)"
+            echo "  others -> patch (1.0.x)"
+            exit 1
+          fi
       - name: Bump version and push tag
         id: tag_version
         uses: mathieudutour/github-tag-action@v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+      - name: Update VERSION in script
+        if: steps.tag_version.outputs.new_version != ''
+        env:
+          NEW_VERSION: ${{ steps.tag_version.outputs.new_version }}
+        run: |
+          sed -i "s/^VERSION=.*/VERSION=\"${NEW_VERSION}\"/" scripts/local/ai-review
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/local/ai-review
+          git diff --staged --quiet || git commit -m "chore: sync VERSION to ${NEW_VERSION} [skip ci]"
+          git push
       - name: Create a GitHub release
+        if: steps.tag_version.outputs.new_tag != ''
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ steps.tag_version.outputs.new_tag }}
