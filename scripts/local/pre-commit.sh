@@ -3,7 +3,7 @@
 # Pre-commit hook for AI-powered code review
 set -e
 
-VERSION="1.0.10"
+VERSION="1.23.0"
 
 # Source platform abstraction layer
 _PRECOMMIT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
