@@ -20,9 +20,9 @@ jobs:
       - name: Enforce conventional commits
         run: |
           COMMIT_MSG=$(git log -1 --pretty=%s)
-          # Skip lint for bot commits ([skip ci])
-          if echo "$COMMIT_MSG" | grep -q "\[skip ci\]"; then
-            echo "Skipping lint for [skip ci] commit"
+          # Skip lint for bot commits ([skip ci]) and GitHub merge commits
+          if echo "$COMMIT_MSG" | grep -qE "^\[skip ci\]|\[skip ci\]$|^Merge pull request|^Merge branch"; then
+            echo "Skipping lint for: $COMMIT_MSG"
             exit 0
           fi
           PATTERN='^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?(!)?: .+'
