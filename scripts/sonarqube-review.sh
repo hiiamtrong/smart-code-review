@@ -175,7 +175,7 @@ else
     CURL_OUTPUT=$(curl -sSL -w "\n%{http_code}" "$DOWNLOAD_URL" -o scanner.zip 2>&1)
     CURL_EXIT=$?
     HTTP_CODE=$(echo "$CURL_OUTPUT" | tail -1)
-    CURL_MSG=$(echo "$CURL_OUTPUT" | head -n -1)
+    CURL_MSG=$(echo "$CURL_OUTPUT" | sed '$d')
 
     if [[ $CURL_EXIT -ne 0 ]]; then
       log_error "curl failed (exit code: $CURL_EXIT)"
