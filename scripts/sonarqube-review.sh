@@ -333,6 +333,9 @@ else
   # Force full analysis of all code (not just new code)
   SONAR_OPTS="$SONAR_OPTS -Dsonar.qualitygate.wait=false"
 
+  # Performance: Disable Copy-Paste Detection (slow on large projects, not useful for pre-commit)
+  SONAR_OPTS="$SONAR_OPTS -Dsonar.cpd.exclusions=**/*"
+
   # Differential Analysis: Only scan staged files (current commit)
   FILES_TO_SCAN=$(git diff --cached --name-only --diff-filter=ACMRTUXB 2>/dev/null | tr '\n' ',')
 
@@ -342,6 +345,16 @@ else
   if [[ -n "$FILES_TO_SCAN" ]]; then
     FILE_COUNT=$(echo "$FILES_TO_SCAN" | tr ',' '\n' | wc -l)
     log_info "Scanning $FILE_COUNT changed file(s)..."
+
+    # Performance: Narrow sonar.sources to only the directories containing changed files
+    # This avoids SonarQube indexing the entire project tree (major speedup)
+    CHANGED_DIRS=$(echo "$FILES_TO_SCAN" | tr ',' '\n' | while read -r f; do dirname "$f"; done | sort -u | tr '\n' ',' | sed 's/,$//')
+    if [[ -n "$CHANGED_DIRS" ]]; then
+      # Replace the default sonar.sources=. with only the needed directories
+      SONAR_OPTS="$SONAR_OPTS -Dsonar.sources=$CHANGED_DIRS"
+      SONAR_SOURCES="$CHANGED_DIRS"
+    fi
+
     SONAR_OPTS="$SONAR_OPTS -Dsonar.inclusions=$FILES_TO_SCAN"
   else
     log_info "Scanning all files..."
@@ -355,7 +368,12 @@ else
   SCANNER_LOG=$(mktemp 2>/dev/null || mktemp -t sonar-scanner 2>/dev/null)
 fi
 
-echo "Running SonarQube scanner... (this may take 30-60 seconds)"
+# Override sonar.sources in properties file if narrowed down
+if [[ -n "$GITHUB_ACTIONS" || -n "$CI" ]]; then
+  echo "Running SonarQube scanner... (this may take 30-60 seconds)"
+else
+  echo "Running SonarQube scanner..."
+fi
 echo ""
 
 # Run scanner - no timeout wrapper (timeout.exe on Windows is incompatible)
@@ -395,7 +413,16 @@ for candidate in ".scannerwork/report-task.txt" "report-task.txt" "$HOME/.config
   fi
 done
 TASK_ID=$(grep 'ceTaskId=' "$REPORT_TASK_FILE" 2>/dev/null | sed 's/.*ceTaskId=//' | tr -d '[:space:]' || true)
-MAX_WAIT=60
+
+# Use shorter wait time for local pre-commit mode (fewer files = faster processing)
+if [[ -z "$GITHUB_ACTIONS" && -z "$CI" ]]; then
+  MAX_WAIT=30
+  POLL_INTERVAL=1
+else
+  MAX_WAIT=60
+  POLL_INTERVAL=2
+fi
+
 WAIT_ELAPSED=0
 if [[ -n "$TASK_ID" ]]; then
   log_info "Waiting for analysis results (task: ${TASK_ID:0:12}...)"
@@ -405,8 +432,8 @@ if [[ -n "$TASK_ID" ]]; then
       log_info "Analysis task: $TASK_STATUS (${WAIT_ELAPSED}s)"
       break
     fi
-    sleep 2
-    WAIT_ELAPSED=$((WAIT_ELAPSED + 2))
+    sleep $POLL_INTERVAL
+    WAIT_ELAPSED=$((WAIT_ELAPSED + POLL_INTERVAL))
   done
   if [[ $WAIT_ELAPSED -ge $MAX_WAIT ]]; then
     log_warn "Timed out waiting for analysis results (${MAX_WAIT}s)"
@@ -415,9 +442,9 @@ else
   if [[ -n "$REPORT_TASK_FILE" ]]; then
     log_info "Report found at: $REPORT_TASK_FILE but no task ID"
   else
-    log_info "No report-task.txt found, waiting 5s for results..."
+    log_info "No report-task.txt found, waiting 3s for results..."
   fi
-  sleep 5
+  sleep 3
 fi
 
 # ============================================
