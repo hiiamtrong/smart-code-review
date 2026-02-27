@@ -348,7 +348,24 @@ else
 
     # Performance: Narrow sonar.sources to only the directories containing changed files
     # This avoids SonarQube indexing the entire project tree (major speedup)
-    CHANGED_DIRS=$(echo "$FILES_TO_SCAN" | tr ',' '\n' | while read -r f; do dirname "$f"; done | sort -u | tr '\n' ',' | sed 's/,$//')
+    ALL_DIRS=$(echo "$FILES_TO_SCAN" | tr ',' '\n' | while read -r f; do dirname "$f"; done | sort -u)
+
+    # Deduplicate: remove subdirectories when a parent directory is already in the list
+    # e.g., if src/fiat-account is listed, remove src/fiat-account/dto (already covered)
+    CHANGED_DIRS=""
+    while IFS= read -r dir; do
+      is_subdir=false
+      while IFS= read -r other; do
+        if [[ "$dir" != "$other" && "$dir" == "$other"/* ]]; then
+          is_subdir=true
+          break
+        fi
+      done <<< "$ALL_DIRS"
+      if [[ "$is_subdir" == "false" ]]; then
+        CHANGED_DIRS="${CHANGED_DIRS:+$CHANGED_DIRS,}$dir"
+      fi
+    done <<< "$ALL_DIRS"
+
     if [[ -n "$CHANGED_DIRS" ]]; then
       # Replace the default sonar.sources=. with only the needed directories
       SONAR_OPTS="$SONAR_OPTS -Dsonar.sources=$CHANGED_DIRS"
