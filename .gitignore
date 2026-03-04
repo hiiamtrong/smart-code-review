@@ -28,7 +28,7 @@ Thumbs.db
 
 # Temporary files
 ai-output.json
-reviewdog
+/reviewdog
 
 # SonarQube generated files
 .scannerwork/
