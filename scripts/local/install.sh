@@ -53,9 +53,9 @@ detect_platform() {
 fetch_latest_tag() {
   local api_url="https://api.github.com/repos/${REPO}/releases/latest"
   if command -v curl &>/dev/null; then
-    TAG="$(curl -fsSL "$api_url" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+    TAG="$(curl -fsSL "$api_url" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/' || true)"
   elif command -v wget &>/dev/null; then
-    TAG="$(wget -qO- "$api_url" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+    TAG="$(wget -qO- "$api_url" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/' || true)"
   else
     log_error "curl or wget is required"
     exit 1
@@ -137,17 +137,28 @@ print_next_steps() {
   echo ""
   echo "Next steps:"
   echo "  1. Restart your terminal (or run: source ~/.zshrc / ~/.bashrc)"
-  echo "  2. Run: ai-review setup       — configure credentials"
-  echo "  3. cd into any git repo"
-  echo "  4. Run: ai-review install     — install the pre-commit hook"
+  echo "  2. Run: ai-review setup       — configure AI Gateway credentials"
+  echo "  3. (Optional) Tune AI review behaviour:"
+  echo "       ai-review config set ENABLE_AI_REVIEW       true   # enable/disable AI review"
+  echo "       ai-review config set BLOCK_ON_GATEWAY_ERROR  true   # block commit on gateway error"
+  echo "       ai-review config set GATEWAY_TIMEOUT_SEC     120    # gateway request timeout (sec)"
+  echo "  4. (Optional) Enable SonarQube local analysis:"
+  echo "       ai-review config set ENABLE_SONARQUBE_LOCAL  true"
+  echo "       ai-review config set SONAR_HOST_URL          <url>"
+  echo "       ai-review config set SONAR_TOKEN             <token>"
+  echo "       ai-review config set SONAR_PROJECT_KEY       <key>"
+  echo "  5. cd into any git repo"
+  echo "  6. Run: ai-review install     — install the pre-commit hook"
   echo ""
   echo "Commands:"
-  echo "  ai-review setup      Configure credentials"
-  echo "  ai-review install    Install hook in current repo"
-  echo "  ai-review uninstall  Remove hook from current repo"
-  echo "  ai-review status     Check installation status"
+  echo "  ai-review setup      Configure AI Gateway credentials"
+  echo "  ai-review install    Install pre-commit hook in current repo"
+  echo "  ai-review uninstall  Remove pre-commit hook from current repo"
+  echo "  ai-review status     Show installation and config status"
+  echo "  ai-review config     View or modify configuration"
+  echo "  ai-review ci-review  Run CI/PR review (GitHub Actions)"
   echo "  ai-review update     Update to latest version"
-  echo "  ai-review help       Show help"
+  echo "  ai-review help       Show all available commands"
   echo ""
 }
 

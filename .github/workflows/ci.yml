@@ -88,6 +88,20 @@ jobs:
         working-directory: go
         run: go test -tags=e2e -v -timeout 120s ./e2e/
 
+  # ── BATS tests for install.sh ────────────────────────────────────────────────
+  bash-tests:
+    name: BATS · install.sh
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats-core
+        run: sudo apt-get install -y bats
+
+      - name: Run BATS tests
+        run: bats scripts/local/tests/install.bats
+
   # ── Coverage gate (runs after unit tests on Linux) ─────────────────────────
   coverage:
     name: Coverage gate
