@@ -2,6 +2,7 @@ package installer
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -44,6 +45,30 @@ func TestGetHooksDir_Husky(t *testing.T) {
 	}
 	if got != huskyDir {
 		t.Errorf("got %q, want husky dir %q", got, huskyDir)
+	}
+}
+
+func TestGetHooksDir_CustomCoreHooksPath(t *testing.T) {
+	repo := t.TempDir()
+	cmds := [][]string{
+		{"git", "init", repo},
+		{"git", "-C", repo, "config", "user.email", "test@test.com"},
+		{"git", "-C", repo, "config", "user.name", "Tester"},
+		{"git", "-C", repo, "config", "core.hooksPath", ".custom-hooks"},
+	}
+	for _, c := range cmds {
+		if err := exec.Command(c[0], c[1:]...).Run(); err != nil {
+			t.Skipf("git setup failed: %v", err)
+		}
+	}
+
+	got, err := GetHooksDir(repo)
+	if err != nil {
+		t.Fatalf("GetHooksDir: %v", err)
+	}
+	want := filepath.Join(repo, ".custom-hooks")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 

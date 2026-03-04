@@ -15,10 +15,10 @@ import (
 	"strings"
 )
 
-const (
-	releaseAPIURL = "https://api.github.com/repos/hiiamtrong/smart-code-review/releases/latest"
-	binaryName    = "ai-review"
-)
+const binaryName = "ai-review"
+
+// releaseAPIURL is a variable so tests can point it at a local mock server.
+var releaseAPIURL = "https://api.github.com/repos/hiiamtrong/smart-code-review/releases/latest"
 
 // LatestRelease holds the tag and download URL for the matching asset.
 type LatestRelease struct {

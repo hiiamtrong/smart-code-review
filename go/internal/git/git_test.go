@@ -170,6 +170,90 @@ index 000..111 100644
 	}
 }
 
+// ─── GetLocalConfig ──────────────────────────────────────────────────────────
+
+func TestGetLocalConfig_ExistingKey(t *testing.T) {
+	dir := newTempRepo(t)
+	chdir(t, dir)
+	// Set a local config key.
+	exec.Command("git", "-C", dir, "config", "user.testkey", "hello").Run()
+
+	val, err := GetLocalConfig("user.testkey")
+	if err != nil {
+		t.Fatalf("GetLocalConfig: %v", err)
+	}
+	if val != "hello" {
+		t.Errorf("got %q, want %q", val, "hello")
+	}
+}
+
+func TestGetLocalConfig_MissingKey(t *testing.T) {
+	dir := newTempRepo(t)
+	chdir(t, dir)
+
+	val, err := GetLocalConfig("no.such.key")
+	if err != nil {
+		t.Fatalf("GetLocalConfig for missing key returned error: %v", err)
+	}
+	if val != "" {
+		t.Errorf("expected empty string for missing key, got %q", val)
+	}
+}
+
+// ─── refExists ───────────────────────────────────────────────────────────────
+
+func TestRefExists_Exists(t *testing.T) {
+	dir := newTempRepo(t)
+	chdir(t, dir)
+
+	if !refExists("HEAD") {
+		t.Error("HEAD should exist in a fresh repo")
+	}
+}
+
+func TestRefExists_NotExists(t *testing.T) {
+	dir := newTempRepo(t)
+	chdir(t, dir)
+
+	if refExists("refs/heads/this-branch-does-not-exist") {
+		t.Error("non-existent ref should return false")
+	}
+}
+
+// ─── GetPRDiff fallback paths ─────────────────────────────────────────────────
+
+func TestGetPRDiff_FallsBackToStagedWithSingleCommit(t *testing.T) {
+	// With only one commit there's no HEAD~1 and no remotes, so GetPRDiff
+	// falls all the way through to GetStagedDiff (empty = "").
+	dir := newTempRepo(t)
+	chdir(t, dir)
+
+	diff, err := GetPRDiff("")
+	if err != nil {
+		t.Fatalf("GetPRDiff: %v", err)
+	}
+	_ = diff // we just verify no error; staged diff may be empty
+}
+
+func TestGetPRDiff_FallsBackToHEAD1(t *testing.T) {
+	dir := newTempRepo(t)
+	chdir(t, dir)
+
+	// Add a second commit so HEAD~1 exists.
+	secondFile := filepath.Join(dir, "second.txt")
+	os.WriteFile(secondFile, []byte("second\n"), 0644)
+	exec.Command("git", "-C", dir, "add", ".").Run()
+	exec.Command("git", "-C", dir, "commit", "-m", "second").Run()
+
+	diff, err := GetPRDiff("")
+	if err != nil {
+		t.Fatalf("GetPRDiff: %v", err)
+	}
+	if !strings.Contains(diff, "second.txt") {
+		t.Errorf("expected diff to mention second.txt; got: %q", diff)
+	}
+}
+
 func TestExtractPRNumber(t *testing.T) {
 	tests := []struct {
 		ref  string
