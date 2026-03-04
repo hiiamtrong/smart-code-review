@@ -299,7 +299,7 @@ func TestInstallAndStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hook file not found: %v", err)
 	}
-	if info.Mode()&0111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode()&0111 == 0 {
 		t.Errorf("hook not executable: mode %o", info.Mode())
 	}
 
