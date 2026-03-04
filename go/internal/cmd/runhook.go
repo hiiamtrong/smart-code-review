@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -18,21 +18,33 @@ import (
 	"github.com/hiiamtrong/smart-code-review/internal/sonarqube"
 )
 
+// errBlocked is returned when the commit should be blocked.
+// return errBlocked bypasses defer, so we return this error instead
+// to let deferred cleanup (e.g. SonarQube artifacts) run.
+var errBlocked = errors.New("")
+
 var runHookCmd = &cobra.Command{
-	Use:    "run-hook",
-	Short:  "Execute pre-commit review logic (called by git hook)",
-	Hidden: true,
-	RunE:   runHook,
+	Use:          "run-hook",
+	Short:        "Execute pre-commit review logic (called by git hook)",
+	Hidden:       true,
+	SilenceUsage: true,
+	RunE:         runHook,
 }
 
 func init() {
 	rootCmd.AddCommand(runHookCmd)
 }
 
+// hookCounts tracks diagnostic counts across review stages.
+type hookCounts struct {
+	errCount, warnCount, infoCount int
+	blocked                        bool
+}
+
 func runHook(cmd *cobra.Command, args []string) error {
 	display.PrintHeader(Version)
 
-	cfg, err := config.LoadWithRepoOverrides()
+	cfg, err := config.LoadMerged()
 	if err != nil {
 		display.LogWarn("config not found — run 'ai-review setup' to configure")
 		return nil
@@ -48,27 +60,56 @@ func runHook(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// ── 1. Get staged diff ────────────────────────────────────────────────────
+	diff, annotatedDiff, lang, repoRoot, gitInfo := hookPrepareDiff()
+	if diff == "" {
+		return nil
+	}
 
+	var counts hookCounts
+
+	if cfg.EnableSonarQube && cfg.SonarToken != "" {
+		counts = hookRunSonarQube(cfg, repoRoot, diff)
+		if counts.blocked {
+			return errBlocked
+		}
+	}
+
+	aiCounts, result := hookRunAIReview(cfg, annotatedDiff, lang, gitInfo)
+	if aiCounts.blocked {
+		return errBlocked
+	}
+	if result == nil {
+		return nil // non-blocking gateway error
+	}
+
+	counts.errCount += aiCounts.errCount
+	counts.warnCount += aiCounts.warnCount
+	counts.infoCount += aiCounts.infoCount
+
+	return hookFinalize(result, counts)
+}
+
+// hookPrepareDiff gets the staged diff, filters ignored files, annotates line
+// numbers, detects language, and collects git metadata. Returns empty rawDiff
+// when there is nothing to review.
+func hookPrepareDiff() (rawDiff, annotated, lang, repoRoot string, gitInfo git.GitInfo) {
 	diff, err := git.GetStagedDiff()
 	if err != nil {
 		display.LogWarn(fmt.Sprintf("could not get staged diff: %v", err))
-		return nil
+		return
 	}
 	if strings.TrimSpace(diff) == "" {
 		display.LogInfo("No staged changes to review")
-		return nil
+		return
 	}
 
-	// ── 2. Filter ignored files ───────────────────────────────────────────────
-
-	repoRoot, err := git.GetRepoRoot()
+	repoRoot, err = git.GetRepoRoot()
 	if err != nil {
 		repoRoot = "."
 	}
 
 	ignorePath := filepath.Join(repoRoot, ".aireviewignore")
-	patterns, _ := filter.LoadIgnorePatterns(ignorePath) // missing file is fine
+	patterns, _ := filter.LoadIgnorePatterns(ignorePath)
 	filteredDiff, ignoredCount := filter.FilterDiff(diff, patterns)
 
 	if ignoredCount > 0 {
@@ -77,111 +118,113 @@ func runHook(cmd *cobra.Command, args []string) error {
 
 	if strings.TrimSpace(filteredDiff) == "" {
 		display.LogInfo("All changed files are ignored — skipping review")
-		return nil
+		return
 	}
 
-	// ── 3. Annotate line numbers ──────────────────────────────────────────────
-
-	annotatedDiff := git.AnnotateLineNumbers(filteredDiff)
-
-	// ── 4. Detect language ────────────────────────────────────────────────────
-
-	lang := language.DetectFromDiff(annotatedDiff)
+	annotated = git.AnnotateLineNumbers(filteredDiff)
+	lang = language.DetectFromDiff(annotated)
 	if lang == "unknown" {
 		lang = language.DetectFromProject(repoRoot)
 	}
 	display.LogInfo(fmt.Sprintf("Detected language: %s", lang))
 
-	// ── 5. Collect git metadata ───────────────────────────────────────────────
-
-	gitInfo, err := git.GetGitInfo()
+	gitInfo, err = git.GetGitInfo()
 	if err != nil {
 		gitInfo = git.GitInfo{CommitHash: "staged"}
 	}
 
-	// Counters shared across SonarQube and AI review sections.
-	var (
-		errCount  int
-		warnCount int
-		infoCount int
-	)
+	rawDiff = diff
+	return
+}
 
-	// ── 6. SonarQube analysis (optional, runs before AI review) ──────────────
+// hookRunSonarQube runs the full SonarQube analysis pipeline and returns
+// diagnostic counts and whether the commit should be blocked.
+func hookRunSonarQube(cfg *config.Config, repoRoot, diff string) hookCounts {
+	display.Divider()
+	display.LogInfo("Running SonarQube analysis...")
 
-	if cfg.EnableSonarQube && cfg.SonarToken != "" {
-		display.Divider()
-		display.LogInfo("Running SonarQube analysis...")
+	var counts hookCounts
 
-		scannerBin, sonarErr := sonarqube.FindScanner()
-		if sonarErr != nil {
-			display.LogWarn(fmt.Sprintf("SonarQube scanner not found: %v", sonarErr))
-		} else {
-			projectKey := cfg.SonarProjectKey
-			if projectKey == "" {
-				projectKey, _ = git.GetLocalConfig("aireview.sonarProjectKey")
-			}
-			_, propsCreated, propErr := sonarqube.AutoGenerateProperties(repoRoot, projectKey)
-			if propErr != nil {
-				display.LogWarn(fmt.Sprintf("sonar-project.properties: %v", propErr))
-			}
-			defer sonarqube.Cleanup(repoRoot, propsCreated)
+	scannerBin, err := sonarqube.FindScanner()
+	if err != nil {
+		display.LogWarn(fmt.Sprintf("SonarQube scanner not found: %v", err))
+		return counts
+	}
 
-			// Build list of staged files for narrowed scanning.
-			stagedFiles := extractStagedFiles(diff)
+	projectKey := cfg.SonarProjectKey
+	if projectKey == "" {
+		projectKey, _ = git.GetLocalConfig("aireview.sonarProjectKey")
+	}
+	_, propsCreated, propErr := sonarqube.AutoGenerateProperties(repoRoot, projectKey)
+	if propErr != nil {
+		display.LogWarn(fmt.Sprintf("sonar-project.properties: %v", propErr))
+	}
+	defer sonarqube.Cleanup(repoRoot, propsCreated)
 
-			sonarCfg := sonarqube.SonarConfig{
-				HostURL:       cfg.SonarHostURL,
-				Token:         cfg.SonarToken,
-				ProjectKey:    projectKey,
-				FilterChanged: cfg.SonarFilterChanged,
-				BlockHotspots: cfg.SonarBlockHotspots,
-			}
+	stagedFiles := extractStagedFiles(diff)
+	sonarCfg := sonarqube.SonarConfig{
+		HostURL:       cfg.SonarHostURL,
+		Token:         cfg.SonarToken,
+		ProjectKey:    projectKey,
+		FilterChanged: cfg.SonarFilterChanged,
+		BlockHotspots: cfg.SonarBlockHotspots,
+	}
 
-			if runErr := sonarqube.RunAnalysis(scannerBin, sonarCfg, stagedFiles); runErr != nil {
-				display.LogWarn(fmt.Sprintf("SonarQube analysis failed: %v", runErr))
-			} else {
-				_ = sonarqube.WaitForTask(cfg.SonarHostURL, cfg.SonarToken, repoRoot, false)
+	if runErr := sonarqube.RunAnalysis(scannerBin, sonarCfg, stagedFiles); runErr != nil {
+		display.LogWarn(fmt.Sprintf("SonarQube analysis failed: %v", runErr))
+		return counts
+	}
 
-				changedRanges := sonarqube.ParseStagedLineRanges(diff)
-				sonarResult, fetchErr := sonarqube.FetchResults(sonarCfg, changedRanges)
-				if fetchErr != nil {
-					display.LogWarn(fmt.Sprintf("fetch SonarQube results: %v", fetchErr))
-				} else {
-					if sonarResult.Truncated {
-						display.LogWarn("SonarQube: result set may be incomplete (over 500 issues); review SonarQube dashboard for full list")
-					}
-					for _, d := range sonarResult.Diagnostics {
-						display.PrintIssue(d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
-						switch d.Severity {
-						case "ERROR":
-							errCount++
-						case "WARNING":
-							warnCount++
-						default:
-							infoCount++
-						}
-					}
-					if sonarResult.HotspotCount > 0 {
-						display.LogWarn(fmt.Sprintf("SonarQube: %d security hotspot(s) require review", sonarResult.HotspotCount))
-						if cfg.SonarBlockHotspots {
-							display.LogError("Commit blocked: review security hotspots in SonarQube dashboard")
-							os.Exit(1)
-						}
-					}
-					if errCount > 0 {
-						display.LogError("Commit blocked by SonarQube errors")
-						os.Exit(1)
-					}
-				}
-			}
+	_ = sonarqube.WaitForTask(cfg.SonarHostURL, cfg.SonarToken, repoRoot, false)
+
+	changedRanges := sonarqube.ParseStagedLineRanges(diff)
+	sonarRes, fetchErr := sonarqube.FetchResults(sonarCfg, changedRanges)
+	if fetchErr != nil {
+		display.LogWarn(fmt.Sprintf("fetch SonarQube results: %v", fetchErr))
+		return counts
+	}
+
+	if sonarRes.Truncated {
+		display.LogWarn("SonarQube: result set may be incomplete (over 500 issues); review SonarQube dashboard for full list")
+	}
+
+	for _, d := range sonarRes.Diagnostics {
+		display.PrintIssue(d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
+		switch d.Severity {
+		case "ERROR":
+			counts.errCount++
+		case "WARNING":
+			counts.warnCount++
+		default:
+			counts.infoCount++
 		}
 	}
 
-	// ── 7. Call AI Gateway (streaming) ────────────────────────────────────────
+	if sonarRes.HotspotCount > 0 {
+		display.LogWarn(fmt.Sprintf("SonarQube: %d security hotspot(s) require review", sonarRes.HotspotCount))
+		if cfg.SonarBlockHotspots {
+			display.LogError("Commit blocked: review security hotspots in SonarQube dashboard")
+			counts.blocked = true
+			return counts
+		}
+	}
 
+	if counts.errCount > 0 {
+		display.LogError("Commit blocked by SonarQube errors")
+		counts.blocked = true
+	}
+
+	return counts
+}
+
+// hookRunAIReview calls the AI gateway for code review and returns diagnostic
+// counts plus the result. A nil result means a non-blocking gateway error.
+func hookRunAIReview(cfg *config.Config, annotatedDiff, lang string, gitInfo git.GitInfo) (hookCounts, *gateway.ReviewResult) {
 	display.Divider()
 	display.LogInfo("Running AI code review...")
 	display.Divider()
+
+	var counts hookCounts
 
 	payload := gateway.ReviewPayload{
 		Diff:       annotatedDiff,
@@ -195,11 +238,11 @@ func runHook(cmd *cobra.Command, args []string) error {
 		display.PrintIssue(d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
 		switch d.Severity {
 		case "ERROR":
-			errCount++
+			counts.errCount++
 		case "WARNING":
-			warnCount++
+			counts.warnCount++
 		default:
-			infoCount++
+			counts.infoCount++
 		}
 	}
 
@@ -209,45 +252,47 @@ func runHook(cmd *cobra.Command, args []string) error {
 		display.LogWarn(fmt.Sprintf("AI Gateway error: %v", reviewErr))
 		if cfg.BlockOnGatewayError {
 			display.LogError("Blocking commit due to gateway error (set BLOCK_ON_GATEWAY_ERROR=false to skip)")
-			os.Exit(1)
+			counts.blocked = true
 		}
-		return nil
+		return counts, nil
 	}
 
 	// Recount from result if streaming callback did not fire (sync fallback path).
-	if errCount+warnCount+infoCount == 0 && result != nil {
+	if counts.errCount+counts.warnCount+counts.infoCount == 0 && result != nil {
 		for _, d := range result.Diagnostics {
 			display.PrintIssue(d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
 			switch d.Severity {
 			case "ERROR":
-				errCount++
+				counts.errCount++
 			case "WARNING":
-				warnCount++
+				counts.warnCount++
 			default:
-				infoCount++
+				counts.infoCount++
 			}
 		}
 	}
 
-	// ── 8. Display overview ───────────────────────────────────────────────────
+	return counts, result
+}
 
+// hookFinalize displays the overview and summary, then decides whether to
+// block the commit.
+func hookFinalize(result *gateway.ReviewResult, counts hookCounts) error {
 	if result != nil && result.Overview != "" {
 		display.Divider()
 		fmt.Println(result.Overview)
 	}
 
-	// ── 9. Summary & exit code ────────────────────────────────────────────────
-
 	display.Divider()
-	display.PrintSummary(errCount, warnCount, infoCount)
+	display.PrintSummary(counts.errCount, counts.warnCount, counts.infoCount)
 	display.Divider()
 
-	if errCount > 0 {
+	if counts.errCount > 0 {
 		display.LogError("Commit blocked: fix the errors above before committing")
-		os.Exit(1)
+		return errBlocked
 	}
 
-	if errCount == 0 && warnCount == 0 && infoCount == 0 {
+	if counts.errCount == 0 && counts.warnCount == 0 && counts.infoCount == 0 {
 		display.LogSuccess("No issues found")
 	} else {
 		display.LogSuccess("Review complete")

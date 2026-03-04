@@ -73,89 +73,21 @@ func FilePath() string {
 	return filepath.Join(ConfigDir(), "config")
 }
 
-// Load reads the config file and returns a Config, then overlays any
-// environment variables (AI_GATEWAY_URL, AI_GATEWAY_API_KEY, etc.).
-// If no config file exists, defaults + env vars are returned without error,
-// allowing CI runners to configure the binary purely via environment.
+// Load reads the config file and returns a Config with full layered
+// resolution (defaults ← global ← project ← git-local ← env).
+//
+// Deprecated: Use LoadMerged() directly for clarity.  Load now delegates
+// to LoadMerged to ensure per-project config is always applied.
 func Load() (*Config, error) {
-	cfg := Defaults()
-	path := FilePath()
-
-	f, err := os.Open(path)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("open config: %w", err)
-	}
-	if err == nil {
-		defer f.Close()
-		values, parseErr := parseShellConfig(f)
-		if parseErr != nil {
-			return nil, fmt.Errorf("parse config: %w", parseErr)
-		}
-		applyValues(cfg, values)
-	}
-
-	// Env vars always win — lets CI runners configure without a config file.
-	applyEnvVars(cfg)
-	return cfg, nil
+	return LoadMerged()
 }
 
-// applyEnvVars overlays non-empty environment variables onto cfg.
-func applyEnvVars(cfg *Config) {
-	envMap := map[string]*string{
-		"AI_GATEWAY_URL":     &cfg.AIGatewayURL,
-		"AI_GATEWAY_API_KEY": &cfg.AIGatewayAPIKey,
-		"AI_MODEL":           &cfg.AIModel,
-		"AI_PROVIDER":        &cfg.AIProvider,
-		"SONAR_HOST_URL":     &cfg.SonarHostURL,
-		"SONAR_TOKEN":        &cfg.SonarToken,
-		"SONAR_PROJECT_KEY":  &cfg.SonarProjectKey,
-	}
-	for key, field := range envMap {
-		if v := os.Getenv(key); v != "" {
-			*field = v
-		}
-	}
-	boolEnv := map[string]*bool{
-		"ENABLE_AI_REVIEW":             &cfg.EnableAIReview,
-		"ENABLE_SONARQUBE_LOCAL":       &cfg.EnableSonarQube,
-		"BLOCK_ON_GATEWAY_ERROR":       &cfg.BlockOnGatewayError,
-		"SONAR_BLOCK_ON_HOTSPOTS":      &cfg.SonarBlockHotspots,
-		"SONAR_FILTER_CHANGED_LINES_ONLY": &cfg.SonarFilterChanged,
-	}
-	for key, field := range boolEnv {
-		if v := os.Getenv(key); v != "" {
-			if b, err := strconv.ParseBool(v); err == nil {
-				*field = b
-			}
-		}
-	}
-	// Int env vars.
-	if v := os.Getenv("GATEWAY_TIMEOUT_SEC"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.GatewayTimeoutSec = n
-		}
-	}
-}
-
-// LoadWithRepoOverrides loads the global config then applies per-repo git
-// config overrides (aireview.sonarProjectKey, aireview.enableSonarQube).
-// It is safe to call outside a git repo — overrides are simply skipped.
+// LoadWithRepoOverrides loads config with per-repo overrides.
+//
+// Deprecated: Use LoadMerged() which includes project config, git-local,
+// and env layers automatically.
 func LoadWithRepoOverrides() (*Config, error) {
-	cfg, err := Load()
-	if err != nil {
-		return nil, err
-	}
-
-	// Import here to avoid circular dependency; git pkg calls no config funcs.
-	if key := gitLocalConfig("aireview.sonarProjectKey"); key != "" {
-		cfg.SonarProjectKey = key
-	}
-	if val := gitLocalConfig("aireview.enableSonarQube"); val != "" {
-		if b, err := strconv.ParseBool(val); err == nil {
-			cfg.EnableSonarQube = b
-		}
-	}
-	return cfg, nil
+	return LoadMerged()
 }
 
 // Save writes cfg back to the config file in shell KEY="VALUE" format.
@@ -332,8 +264,3 @@ func boolToStr(b bool) string {
 	return "false"
 }
 
-// gitLocalConfig reads a per-repo git config value without importing internal/git
-// (which would create a circular dependency). Returns "" if not in a git repo or key unset.
-func gitLocalConfig(key string) string {
-	return gitLocalConfigImpl(key)
-}

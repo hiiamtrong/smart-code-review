@@ -352,10 +352,15 @@ else
     # This avoids SonarQube indexing the entire project tree (major speedup)
     ALL_DIRS=$(echo "$FILES_TO_SCAN" | tr ',' '\n' | while read -r f; do dirname "$f"; done | sort -u)
 
-    # If any file lives at the project root (dir="."), "." covers everything.
-    if echo "$ALL_DIRS" | grep -qx '\.'; then
+    # Filter out root-level files (dir=".") — they are covered by sonar.inclusions.
+    # Keeping "." would make SonarQube traverse node_modules, vendor, etc.
+    NON_ROOT_DIRS=$(echo "$ALL_DIRS" | grep -vx '\.' || true)
+
+    if [[ -z "$NON_ROOT_DIRS" ]]; then
+      # All staged files are root-level; fall back to "."
       CHANGED_DIRS="."
     else
+      ALL_DIRS="$NON_ROOT_DIRS"
       # Deduplicate: remove subdirectories when a parent directory is already in the list
       # e.g., if src/fiat-account is listed, remove src/fiat-account/dto (already covered)
       CHANGED_DIRS=""

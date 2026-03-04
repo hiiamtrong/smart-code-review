@@ -25,7 +25,7 @@ func init() {
 }
 
 func runSetup(cmd *cobra.Command, args []string) error {
-	cfg, _ := config.Load()
+	cfg, _ := config.LoadMerged()
 	if cfg == nil {
 		cfg = config.Defaults()
 	}

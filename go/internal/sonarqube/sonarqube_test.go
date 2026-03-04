@@ -13,9 +13,13 @@ import (
 )
 
 const (
-	propsFile    = "sonar-project.properties"
-	scannerDir   = ".scannerwork"
-	errFmtString = "error: %v"
+	propsFile      = "sonar-project.properties"
+	scannerDir     = ".scannerwork"
+	errFmtString   = "error: %v"
+	testFileFooGo  = "src/foo.go"
+	testProjectKey = "my-project"
+	testSonarURL   = "http://sonar.example.com"
+	reportTaskFile = "report-task.txt"
 )
 
 // ─── ParseStagedLineRanges ────────────────────────────────────────────────────
@@ -31,8 +35,8 @@ func TestParseStagedLineRanges_basic(t *testing.T) {
 		t.Fatalf("expected 1 range, got %d", len(ranges))
 	}
 	r := ranges[0]
-	if r.File != "src/foo.go" {
-		t.Errorf("File = %q, want %q", r.File, "src/foo.go")
+	if r.File != testFileFooGo {
+		t.Errorf("File = %q, want %q", r.File, testFileFooGo)
 	}
 	if r.Start != 10 || r.End != 14 {
 		t.Errorf("range = [%d,%d], want [10,14]", r.Start, r.End)
@@ -102,7 +106,7 @@ func TestDedupedDirs_basic(t *testing.T) {
 
 func TestDedupedDirs_removesSubdir(t *testing.T) {
 	// src is parent of src/utils — only src should remain
-	files := []string{"src/foo.go", "src/utils/bar.go"}
+	files := []string{testFileFooGo, "src/utils/bar.go"}
 	result := dedupedDirs(files)
 	if strings.Contains(result, "src/utils") {
 		t.Errorf("dedupedDirs should drop subdirectory: got %q", result)
@@ -121,12 +125,16 @@ func TestDedupedDirs_rootFiles(t *testing.T) {
 }
 
 func TestDedupedDirs_rootFileMixedWithSubdirs(t *testing.T) {
-	// When root-level files (dir=".") are mixed with subdirectory files,
-	// "." covers everything — no other dirs should appear.
+	// Root-level files (dir=".") should be skipped to avoid sonar.sources="."
+	// which causes SonarQube to traverse node_modules, vendor, etc.
+	// Root files are already covered by sonar.inclusions.
 	files := []string{"package.json", "docs/API_DOCUMENTATION.md", "src/lib/api.ts"}
 	result := dedupedDirs(files)
-	if result != "." {
-		t.Errorf("expected \".\", got %q (root dir should cover all subdirs)", result)
+	if strings.Contains(result, ".") && result != "docs,src/lib" {
+		t.Errorf("expected subdirs only, got %q (root files should be skipped)", result)
+	}
+	if !strings.Contains(result, "docs") || !strings.Contains(result, "src/lib") {
+		t.Errorf("expected docs and src/lib, got %q", result)
 	}
 }
 
@@ -136,7 +144,7 @@ func TestSanitizeKey(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"my-project", "my-project"},
+		{testProjectKey, testProjectKey},
 		{"my project", "my_project"},
 		{"foo/bar.baz", "foo_bar_baz"},
 		{"valid_key-123", "valid_key-123"},
@@ -176,31 +184,33 @@ func TestFilterByChangedLines_keeps(t *testing.T) {
 	diags := []gateway.Diagnostic{
 		{
 			Location: gateway.Location{
-				Path:  "src/foo.go",
+				Path:  testFileFooGo,
 				Range: gateway.Range{Start: gateway.Position{Line: 10}},
 			},
 		},
 	}
-	ranges := []lineRange{{File: "src/foo.go", Start: 5, End: 15}}
+	ranges := []lineRange{{File: testFileFooGo, Start: 5, End: 15}}
 	out := filterByChangedLines(diags, ranges)
 	if len(out) != 1 {
 		t.Errorf("expected 1 diagnostic, got %d", len(out))
 	}
 }
 
-func TestFilterByChangedLines_drops(t *testing.T) {
+func TestFilterByChangedLines_keepsAnyLineInChangedFile(t *testing.T) {
+	// Issue is on line 100, change is on lines 5-15, but same file
+	// → should be kept (filter is file-based, not line-based)
 	diags := []gateway.Diagnostic{
 		{
 			Location: gateway.Location{
-				Path:  "src/foo.go",
+				Path:  testFileFooGo,
 				Range: gateway.Range{Start: gateway.Position{Line: 100}},
 			},
 		},
 	}
-	ranges := []lineRange{{File: "src/foo.go", Start: 5, End: 15}}
+	ranges := []lineRange{{File: testFileFooGo, Start: 5, End: 15}}
 	out := filterByChangedLines(diags, ranges)
-	if len(out) != 0 {
-		t.Errorf("expected 0 diagnostics (line out of range), got %d", len(out))
+	if len(out) != 1 {
+		t.Errorf("expected 1 diagnostic (same file), got %d", len(out))
 	}
 }
 
@@ -213,7 +223,7 @@ func TestFilterByChangedLines_wrongFile(t *testing.T) {
 			},
 		},
 	}
-	ranges := []lineRange{{File: "src/foo.go", Start: 5, End: 15}}
+	ranges := []lineRange{{File: testFileFooGo, Start: 5, End: 15}}
 	out := filterByChangedLines(diags, ranges)
 	if len(out) != 0 {
 		t.Errorf("expected 0 diagnostics (wrong file), got %d", len(out))
@@ -232,7 +242,7 @@ func TestConvertIssues_stripsProjectKeyPrefix(t *testing.T) {
 			Line:      42,
 		},
 	}
-	diags := convertIssues(issues, "http://sonar.example.com")
+	diags := convertIssues(issues, testSonarURL)
 	if len(diags) != 1 {
 		t.Fatalf("expected 1 diag, got %d", len(diags))
 	}
@@ -248,7 +258,7 @@ func TestConvertIssues_zeroLineBecomesOne(t *testing.T) {
 	issues := []sonarIssue{
 		{Message: "msg", Rule: "r", Severity: "INFO", Component: "proj:file.go", Line: 0},
 	}
-	diags := convertIssues(issues, "http://sonar.example.com")
+	diags := convertIssues(issues, testSonarURL)
 	if diags[0].Location.Range.Start.Line != 1 {
 		t.Errorf("Line = %d, want 1", diags[0].Location.Range.Start.Line)
 	}
@@ -294,7 +304,7 @@ func TestCleanup_keepsExistingProps(t *testing.T) {
 
 func TestAutoGenerateProperties_createsFile(t *testing.T) {
 	dir := t.TempDir()
-	path, created, err := AutoGenerateProperties(dir, "my-project")
+	path, created, err := AutoGenerateProperties(dir, testProjectKey)
 	if err != nil {
 		t.Fatalf("AutoGenerateProperties error: %v", err)
 	}
@@ -376,7 +386,7 @@ func TestAutoGenerateProperties_goProject(t *testing.T) {
 
 func TestReadTaskID_found(t *testing.T) {
 	dir := t.TempDir()
-	reportFile := filepath.Join(dir, "report-task.txt")
+	reportFile := filepath.Join(dir, reportTaskFile)
 	content := "projectKey=my-project\nceTaskId=abc-123\nserverUrl=http://sonar\n"
 	os.WriteFile(reportFile, []byte(content), 0644)
 
@@ -395,7 +405,7 @@ func TestReadTaskID_missingFile(t *testing.T) {
 
 func TestReadTaskID_noTaskIDLine(t *testing.T) {
 	dir := t.TempDir()
-	reportFile := filepath.Join(dir, "report-task.txt")
+	reportFile := filepath.Join(dir, reportTaskFile)
 	os.WriteFile(reportFile, []byte("projectKey=foo\nserverUrl=http://sonar\n"), 0644)
 
 	id := readTaskID(reportFile)
@@ -438,7 +448,7 @@ func TestWaitForTask_noTaskID(t *testing.T) {
 	// We pass a very short timeout by having no scannerwork dir.
 	// The function sleeps 3s in the no-taskID path — skip timing, just verify no error.
 	// Use a non-existent dir so readTaskID returns "".
-	err := WaitForTask("http://sonar.example.com", "tok", dir, false)
+	err := WaitForTask(testSonarURL, "tok", dir, false)
 	if err != nil {
 		t.Errorf("WaitForTask no taskID: got error %v", err)
 	}
@@ -458,7 +468,7 @@ func TestWaitForTask_taskSucceeds(t *testing.T) {
 	// Create .scannerwork/report-task.txt with a task ID
 	scannerPath := filepath.Join(dir, scannerDir)
 	os.MkdirAll(scannerPath, 0755)
-	os.WriteFile(filepath.Join(scannerPath, "report-task.txt"),
+	os.WriteFile(filepath.Join(scannerPath, reportTaskFile),
 		[]byte("ceTaskId=task-xyz\n"), 0644)
 
 	err := WaitForTask(srv.URL, "tok", dir, false)

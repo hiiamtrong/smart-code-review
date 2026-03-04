@@ -36,7 +36,7 @@ func init() {
 }
 
 func runCIReview(cmd *cobra.Command, args []string) error {
-	cfg, err := config.Load()
+	cfg, err := config.LoadMerged()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -116,47 +116,56 @@ func runCIReview(cmd *cobra.Command, args []string) error {
 
 	display.LogInfo(fmt.Sprintf("Review complete: %d diagnostic(s)", len(result.Diagnostics)))
 
-	// ── 7. Write output files ─────────────────────────────────────────────────
+	// ── 7-9. Write outputs, post PR comment, invoke reviewdog ────────────────
 
-	if err := reviewdog.WriteRDJSON(result, ciOutputFile); err != nil {
+	if err := ciWriteOutputs(result, ciOutputFile, ciOverviewFile); err != nil {
+		return err
+	}
+	ciPostPRComment(result, gitInfo)
+	ciRunReviewdog(result, ciOutputFile, ciReporter)
+
+	return nil
+}
+
+func ciWriteOutputs(result *gateway.ReviewResult, outputFile, overviewFile string) error {
+	if err := reviewdog.WriteRDJSON(result, outputFile); err != nil {
 		return fmt.Errorf("write rdjson: %w", err)
 	}
-	display.LogSuccess(fmt.Sprintf("Wrote rdjson to %s", ciOutputFile))
+	display.LogSuccess(fmt.Sprintf("Wrote rdjson to %s", outputFile))
 
 	if result.Overview != "" {
-		if err := reviewdog.WriteOverview(result, ciOverviewFile); err != nil {
+		if err := reviewdog.WriteOverview(result, overviewFile); err != nil {
 			return fmt.Errorf("write overview: %w", err)
 		}
-		display.LogSuccess(fmt.Sprintf("Wrote overview to %s", ciOverviewFile))
+		display.LogSuccess(fmt.Sprintf("Wrote overview to %s", overviewFile))
 	}
+	return nil
+}
 
-	// ── 8. Post GitHub PR comment (if token + PR available) ───────────────────
-
+func ciPostPRComment(result *gateway.ReviewResult, gitInfo git.GitInfo) {
 	ghToken := os.Getenv("GITHUB_TOKEN")
 	ghRepo := os.Getenv("GITHUB_REPOSITORY")
 	prNumber := gitInfo.PRNumber
 
-	if ghToken != "" && ghRepo != "" && prNumber != "" && result.Overview != "" {
-		display.LogInfo("Posting overview comment on PR...")
-		if err := reviewdog.PostOverviewComment(ghToken, ghRepo, prNumber, result.Overview); err != nil {
-			// Non-fatal: log and continue.
-			display.LogWarn(fmt.Sprintf("Could not post PR comment: %v", err))
-		} else {
-			display.LogSuccess("Posted overview comment")
-		}
+	if ghToken == "" || ghRepo == "" || prNumber == "" || result.Overview == "" {
+		return
 	}
 
-	// ── 9. Invoke reviewdog ───────────────────────────────────────────────────
+	display.LogInfo("Posting overview comment on PR...")
+	if err := reviewdog.PostOverviewComment(ghToken, ghRepo, prNumber, result.Overview); err != nil {
+		display.LogWarn(fmt.Sprintf("Could not post PR comment: %v", err))
+	} else {
+		display.LogSuccess("Posted overview comment")
+	}
+}
 
-	if err := reviewdog.InvokeReviewdog(ciOutputFile, ciReporter); err != nil {
+func ciRunReviewdog(result *gateway.ReviewResult, outputFile, reporter string) {
+	if err := reviewdog.InvokeReviewdog(outputFile, reporter); err != nil {
 		display.LogWarn(fmt.Sprintf("reviewdog: %v", err))
-		// Check for ERROR severity to set exit code.
 		for _, d := range result.Diagnostics {
 			if d.Severity == "ERROR" {
 				os.Exit(1)
 			}
 		}
 	}
-
-	return nil
 }

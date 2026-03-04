@@ -243,6 +243,28 @@ teardown() {
 
 # ── installation result ───────────────────────────────────────────────────────
 
+# ── print_next_steps output ───────────────────────────────────────────────────
+
+@test "print_next_steps: mentions per-project config with --project flag" {
+  run "${INSTALLER[@]}" --version v9.9.9
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--project"* ]]
+}
+
+@test "print_next_steps: mentions config set for SonarQube" {
+  run "${INSTALLER[@]}" --version v9.9.9
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ENABLE_SONARQUBE_LOCAL"* ]]
+}
+
+@test "print_next_steps: mentions AI review config" {
+  run "${INSTALLER[@]}" --version v9.9.9
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ENABLE_AI_REVIEW"* ]]
+}
+
+# ── installation result ───────────────────────────────────────────────────────
+
 @test "binary is installed to BIN_DIR after successful run" {
   run "${INSTALLER[@]}" --version v9.9.9
   [ "$status" -eq 0 ]

@@ -43,12 +43,14 @@ type Result struct {
 
 // ─── scanner discovery ────────────────────────────────────────────────────────
 
+const scannerName = "sonar-scanner"
+
 // FindScanner returns the path to the sonar-scanner binary.
 // Looks in PATH, then ~/. sonar/sonar-scanner/bin/.
 func FindScanner() (string, error) {
-	name := "sonar-scanner"
+	name := scannerName
 	if runtime.GOOS == "windows" {
-		name = "sonar-scanner.bat"
+		name = scannerName + ".bat"
 	}
 
 	// 1. PATH
@@ -63,17 +65,18 @@ func FindScanner() (string, error) {
 
 	// 2. ~/.sonar/sonar-scanner/bin/
 	home, _ := os.UserHomeDir()
-	candidate := filepath.Join(home, ".sonar", "sonar-scanner", "bin", name)
+	scannerBinDir := filepath.Join(home, ".sonar", scannerName, "bin")
+	candidate := filepath.Join(scannerBinDir, name)
 	if _, err := os.Stat(candidate); err == nil {
 		return candidate, nil
 	}
 	// fallback without .bat extension
-	candidate2 := filepath.Join(home, ".sonar", "sonar-scanner", "bin", "sonar-scanner")
+	candidate2 := filepath.Join(scannerBinDir, scannerName)
 	if _, err := os.Stat(candidate2); err == nil {
 		return candidate2, nil
 	}
 
-	return "", fmt.Errorf("sonar-scanner not found in PATH or ~/.sonar/sonar-scanner/bin/; install from https://docs.sonarsource.com/sonarqube/latest/analyzing-source-code/scanners/sonarscanner/")
+	return "", fmt.Errorf("%s not found in PATH or ~/.sonar/%s/bin/; install from https://docs.sonarsource.com/sonarqube/latest/analyzing-source-code/scanners/sonarscanner/", scannerName, scannerName)
 }
 
 // ─── properties auto-generation ──────────────────────────────────────────────
@@ -295,15 +298,18 @@ func ParseStagedLineRanges(diff string) []lineRange {
 // ─── internal helpers ─────────────────────────────────────────────────────────
 
 func filterByChangedLines(diags []gateway.Diagnostic, ranges []lineRange) []gateway.Diagnostic {
+	// Build set of changed files from the line ranges.
+	// We filter by FILE rather than exact line ranges because SonarQube
+	// reports issues that may not be on the exact changed lines (e.g.
+	// missing semicolons on interface definitions, import issues, etc.).
+	changedFiles := make(map[string]bool)
+	for _, r := range ranges {
+		changedFiles[r.File] = true
+	}
 	var out []gateway.Diagnostic
 	for _, d := range diags {
-		for _, r := range ranges {
-			if d.Location.Path == r.File &&
-				d.Location.Range.Start.Line >= r.Start &&
-				d.Location.Range.Start.Line <= r.End {
-				out = append(out, d)
-				break
-			}
+		if changedFiles[d.Location.Path] {
+			out = append(out, d)
 		}
 	}
 	return out
@@ -455,13 +461,21 @@ func dedupedDirs(files []string) string {
 	for _, f := range files {
 		d := filepath.Dir(f)
 		if d == "." {
-			// "." covers the entire project; no other dirs needed.
-			return "."
+			// Root-level files (e.g. package.json, .gitignore) are already
+			// covered by sonar.inclusions. Skip them here to avoid setting
+			// sonar.sources="." which causes SonarQube to traverse the
+			// entire project tree (including node_modules, vendor, etc.).
+			continue
 		}
 		if !seen[d] {
 			seen[d] = true
 			dirs = append(dirs, d)
 		}
+	}
+	if len(dirs) == 0 {
+		// All staged files are root-level — fall back to "." since
+		// sonar.sources needs at least one directory.
+		return "."
 	}
 	// Remove subdirs that have a parent already in the list.
 	var deduped []string

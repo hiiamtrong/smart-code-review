@@ -28,7 +28,7 @@ func init() {
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	if _, err := config.Load(); err != nil {
+	if _, err := config.LoadMerged(); err != nil {
 		return fmt.Errorf("config not found — run 'ai-review setup' first")
 	}
 

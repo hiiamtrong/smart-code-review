@@ -26,7 +26,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Config check
-	cfg, err := config.Load()
+	cfg, err := config.LoadMerged()
 	if err != nil {
 		display.LogError("Config not found — run: ai-review setup")
 		return nil
@@ -40,7 +40,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("  AI Review:   %s\n", enabledStr(cfg.EnableAIReview))
 	fmt.Printf("  SonarQube:   %s\n", enabledStr(cfg.EnableSonarQube))
-	fmt.Printf("  Config file: %s\n", config.FilePath())
+	fmt.Printf("  Global config: %s\n", config.FilePath())
+
+	// Show project config info if available.
+	if projDir, err := config.ProjectConfigDir(); err == nil && projDir != "" {
+		fmt.Printf("  Project config: %s/config\n", projDir)
+	}
 	fmt.Println()
 
 	// Hook check (only in a git repo)
