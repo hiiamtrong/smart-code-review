@@ -300,20 +300,17 @@ func TestPostOverviewComment_httpError(t *testing.T) {
 // ─── InvokeReviewdog ─────────────────────────────────────────────────────────
 
 func TestInvokeReviewdog_BinaryNotFound(t *testing.T) {
-	// Create an empty input file.
-	f, err := os.CreateTemp(t.TempDir(), "rdjson-*.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.WriteString("[]")
-	f.Close()
+	// Pass a non-existent input file path — InvokeReviewdog handles os.Open
+	// failure by leaving cmd.Stdin as nil, which avoids holding a file handle
+	// (important on Windows where open handles block TempDir cleanup).
+	inputFile := "/nonexistent/rdjson-input.json"
 
 	// Point HOME to a temp dir that has no ~/bin/reviewdog, and ensure
 	// "reviewdog" is not on PATH either, so the exec fails with "not found".
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("PATH", t.TempDir()) // empty dir, no reviewdog binary
 
-	err = InvokeReviewdog(f.Name(), "local")
+	err := InvokeReviewdog(inputFile, "local")
 	if err == nil {
 		t.Error("expected error when reviewdog binary is not found")
 	}
