@@ -120,9 +120,11 @@ func runHook(cmd *cobra.Command, args []string) error {
 			if projectKey == "" {
 				projectKey, _ = git.GetLocalConfig("aireview.sonarProjectKey")
 			}
-			if _, propErr := sonarqube.AutoGenerateProperties(repoRoot, projectKey); propErr != nil {
+			_, propsCreated, propErr := sonarqube.AutoGenerateProperties(repoRoot, projectKey)
+			if propErr != nil {
 				display.LogWarn(fmt.Sprintf("sonar-project.properties: %v", propErr))
 			}
+			defer sonarqube.Cleanup(repoRoot, propsCreated)
 
 			// Build list of staged files for narrowed scanning.
 			stagedFiles := extractStagedFiles(diff)

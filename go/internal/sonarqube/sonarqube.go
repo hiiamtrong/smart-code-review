@@ -79,11 +79,12 @@ func FindScanner() (string, error) {
 // ─── properties auto-generation ──────────────────────────────────────────────
 
 // AutoGenerateProperties writes a minimal sonar-project.properties to root
-// if one does not already exist. Returns the path written (or existing).
-func AutoGenerateProperties(root, projectKey string) (string, error) {
+// if one does not already exist. Returns the path written (or existing) and
+// whether the file was newly created (true) or already existed (false).
+func AutoGenerateProperties(root, projectKey string) (string, bool, error) {
 	propsPath := filepath.Join(root, "sonar-project.properties")
 	if _, err := os.Stat(propsPath); err == nil {
-		return propsPath, nil // already exists
+		return propsPath, false, nil // already exists
 	}
 
 	if projectKey == "" {
@@ -117,9 +118,19 @@ func AutoGenerateProperties(root, projectKey string) (string, error) {
 	}
 
 	if err := os.WriteFile(propsPath, []byte(sb.String()), 0644); err != nil {
-		return "", fmt.Errorf("write sonar-project.properties: %w", err)
+		return "", false, fmt.Errorf("write sonar-project.properties: %w", err)
 	}
-	return propsPath, nil
+	return propsPath, true, nil
+}
+
+// Cleanup removes SonarQube artifacts left in the project directory after analysis.
+// If propsCreated is true, the auto-generated sonar-project.properties is also removed.
+func Cleanup(root string, propsCreated bool) {
+	if propsCreated {
+		os.Remove(filepath.Join(root, "sonar-project.properties"))
+	}
+	os.RemoveAll(filepath.Join(root, ".scannerwork"))
+	os.Remove(filepath.Join(root, ".sonar_lock"))
 }
 
 // ─── analysis execution ───────────────────────────────────────────────────────
@@ -444,7 +455,8 @@ func dedupedDirs(files []string) string {
 	for _, f := range files {
 		d := filepath.Dir(f)
 		if d == "." {
-			d = "."
+			// "." covers the entire project; no other dirs needed.
+			return "."
 		}
 		if !seen[d] {
 			seen[d] = true

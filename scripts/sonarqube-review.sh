@@ -276,7 +276,9 @@ fi
 # Create sonar-project.properties
 # ============================================
 
+PROPS_CREATED=false
 if [[ ! -f "sonar-project.properties" ]]; then
+  PROPS_CREATED=true
   cat > sonar-project.properties << EOF
 # SonarQube Configuration (auto-generated)
 sonar.projectKey=$SONAR_PROJECT_KEY
@@ -350,21 +352,26 @@ else
     # This avoids SonarQube indexing the entire project tree (major speedup)
     ALL_DIRS=$(echo "$FILES_TO_SCAN" | tr ',' '\n' | while read -r f; do dirname "$f"; done | sort -u)
 
-    # Deduplicate: remove subdirectories when a parent directory is already in the list
-    # e.g., if src/fiat-account is listed, remove src/fiat-account/dto (already covered)
-    CHANGED_DIRS=""
-    while IFS= read -r dir; do
-      is_subdir=false
-      while IFS= read -r other; do
-        if [[ "$dir" != "$other" && "$dir" == "$other"/* ]]; then
-          is_subdir=true
-          break
+    # If any file lives at the project root (dir="."), "." covers everything.
+    if echo "$ALL_DIRS" | grep -qx '\.'; then
+      CHANGED_DIRS="."
+    else
+      # Deduplicate: remove subdirectories when a parent directory is already in the list
+      # e.g., if src/fiat-account is listed, remove src/fiat-account/dto (already covered)
+      CHANGED_DIRS=""
+      while IFS= read -r dir; do
+        is_subdir=false
+        while IFS= read -r other; do
+          if [[ "$dir" != "$other" && "$dir" == "$other"/* ]]; then
+            is_subdir=true
+            break
+          fi
+        done <<< "$ALL_DIRS"
+        if [[ "$is_subdir" == "false" ]]; then
+          CHANGED_DIRS="${CHANGED_DIRS:+$CHANGED_DIRS,}$dir"
         fi
       done <<< "$ALL_DIRS"
-      if [[ "$is_subdir" == "false" ]]; then
-        CHANGED_DIRS="${CHANGED_DIRS:+$CHANGED_DIRS,}$dir"
-      fi
-    done <<< "$ALL_DIRS"
+    fi
 
     if [[ -n "$CHANGED_DIRS" ]]; then
       # Replace the default sonar.sources=. with only the needed directories
@@ -713,14 +720,12 @@ fi
 # Cleanup & Exit
 # ============================================
 
-# Note: Cleanup of SonarQube-generated files is handled by pre-commit.sh cleanup_temp_files()
-# Save report-task.txt for polling before cleanup
-TEMP_DIR="$HOME/.config/ai-review/temp"
-mkdir -p "$TEMP_DIR"
-
-if [[ -f "report-task.txt" ]]; then
-  cp report-task.txt "$TEMP_DIR/" 2>/dev/null || true
+# Clean up SonarQube-generated files so they don't pollute the target project
+if [[ "$PROPS_CREATED" == "true" ]]; then
+  rm -f sonar-project.properties
 fi
+rm -rf .scannerwork 2>/dev/null || true
+rm -f .sonar_lock 2>/dev/null || true
 
 # Check for blocking issues
 BLOCK_ON_HOTSPOTS="${SONAR_BLOCK_ON_HOTSPOTS:-true}"
