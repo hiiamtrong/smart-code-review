@@ -79,7 +79,7 @@ download_binary() {
   log_info "Downloading $archive..."
 
   local tmp_dir; tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "$tmp_dir"' EXIT
+  trap 'rm -rf "${tmp_dir:-}"' EXIT
 
   if command -v curl &>/dev/null; then
     curl -fsSL "$url" -o "$tmp_dir/$archive"
