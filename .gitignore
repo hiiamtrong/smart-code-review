@@ -43,3 +43,5 @@ sonar-report.json
 # Environment files
 .env
 .env.local
+
+*.out
