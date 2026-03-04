@@ -58,6 +58,9 @@ jobs:
           git add scripts/local/ai-review scripts/local/pre-commit.sh
           git diff --staged --quiet || git commit -m "chore: sync VERSION to ${NEW_VERSION} [skip ci]"
           git push
+      - name: Fetch tags for GoReleaser
+        if: steps.tag_version.outputs.new_tag != ''
+        run: git fetch --tags
       - name: Set up Go
         if: steps.tag_version.outputs.new_tag != ''
         uses: actions/setup-go@v5
