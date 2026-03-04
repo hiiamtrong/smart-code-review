@@ -58,16 +58,18 @@ jobs:
         working-directory: go
         run: go build -o ai-review.exe ./cmd/ai-review
 
-  # ── E2E tests — Linux & macOS only ────────────────────────────────────────
-  # Windows is excluded because the fake sonar-scanner helper uses a POSIX
-  # shell script (#!/bin/sh) that cannot be executed natively on Windows.
+  # ── E2E tests — all three platforms ──────────────────────────────────────
+  # Cross-platform support:
+  #   - Unix/macOS: fake sonar-scanner is a POSIX shell script
+  #   - Windows:    fake sonar-scanner is a .bat file (FindScanner looks for
+  #                 sonar-scanner.bat on Windows); binary output gets .exe suffix
   e2e:
     name: E2E · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4

@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -47,6 +48,9 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(tmp)
 
 	aiBinary = filepath.Join(tmp, "ai-review")
+	if runtime.GOOS == "windows" {
+		aiBinary += ".exe"
+	}
 
 	// Build from go/ module root (parent of this e2e/ directory).
 	buildCmd := exec.Command("go", "build", "-o", aiBinary, "./cmd/ai-review")
@@ -688,17 +692,35 @@ func sonarServer(t *testing.T, issues []map[string]interface{}, hotspotCount int
 	return srv
 }
 
-// fakeSonarScanner writes a shell script named "sonar-scanner" to a temp
-// directory and returns that directory.  The script simulates a successful scan
-// by creating .scannerwork/report-task.txt (with a ceTaskId line) in the
-// process working directory, which will be repoDir when run-hook calls it.
+// fakeSonarScanner writes a platform-appropriate fake scanner script to a temp
+// directory and returns that directory.
+//
+//   - Unix/macOS: "sonar-scanner" shell script (#!/bin/sh)
+//   - Windows:    "sonar-scanner.bat" batch file
+//
+// Both scripts create .scannerwork/report-task.txt with a ceTaskId line in the
+// process working directory (= repoDir when run-hook invokes the scanner).
 func fakeSonarScanner(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	script := "#!/bin/sh\nmkdir -p .scannerwork\nprintf 'ceTaskId=fake-task-e2e\\n' > .scannerwork/report-task.txt\nexit 0\n"
-	path := filepath.Join(dir, "sonar-scanner")
-	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
-		t.Fatalf("write fake sonar-scanner: %v", err)
+
+	if runtime.GOOS == "windows" {
+		// Windows batch file — FindScanner() looks for "sonar-scanner.bat" on Windows.
+		// The echo redirect must have no space before > to avoid trailing spaces.
+		script := "@echo off\r\n" +
+			"if not exist .scannerwork mkdir .scannerwork\r\n" +
+			"echo ceTaskId=fake-task-e2e>.scannerwork\\report-task.txt\r\n" +
+			"exit /b 0\r\n"
+		path := filepath.Join(dir, "sonar-scanner.bat")
+		if err := os.WriteFile(path, []byte(script), 0644); err != nil {
+			t.Fatalf("write fake sonar-scanner.bat: %v", err)
+		}
+	} else {
+		script := "#!/bin/sh\nmkdir -p .scannerwork\nprintf 'ceTaskId=fake-task-e2e\\n' > .scannerwork/report-task.txt\nexit 0\n"
+		path := filepath.Join(dir, "sonar-scanner")
+		if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+			t.Fatalf("write fake sonar-scanner: %v", err)
+		}
 	}
 	return dir
 }
@@ -720,7 +742,7 @@ func sonarEnv(homeDir, sonarURL, aiGatewayURL, binDir string) []string {
 		"SONAR_PROJECT_KEY=test-project",
 		"SONAR_FILTER_CHANGED_LINES_ONLY=false",
 		"SONAR_BLOCK_ON_HOTSPOTS=false",
-		"PATH=" + binDir + ":" + os.Getenv("PATH"),
+		"PATH=" + binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
 }
 
