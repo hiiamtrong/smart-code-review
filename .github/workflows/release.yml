@@ -58,11 +58,18 @@ jobs:
           git add scripts/local/ai-review scripts/local/pre-commit.sh
           git diff --staged --quiet || git commit -m "chore: sync VERSION to ${NEW_VERSION} [skip ci]"
           git push
-      - name: Create a GitHub release
+      - name: Set up Go
         if: steps.tag_version.outputs.new_tag != ''
-        uses: ncipollo/release-action@v1
+        uses: actions/setup-go@v5
         with:
-          tag: ${{ steps.tag_version.outputs.new_tag }}
-          name: Release ${{ steps.tag_version.outputs.new_tag }}
-          body: ${{ steps.tag_version.outputs.changelog }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Run GoReleaser
+        if: steps.tag_version.outputs.new_tag != ''
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

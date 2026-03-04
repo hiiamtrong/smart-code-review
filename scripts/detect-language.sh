@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+# DEPRECATED: This bash script is superseded by the Go binary 'ai-review'.
+# Language detection is now built into 'ai-review run-hook' and 'ai-review ci-review'.
+echo "[WARN] scripts/detect-language.sh is deprecated. Language detection is built into 'ai-review'." >&2
+
 # Source platform abstraction layer if available
 _DETECT_LANG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$_DETECT_LANG_SCRIPT_DIR/lib/platform.sh" ]]; then

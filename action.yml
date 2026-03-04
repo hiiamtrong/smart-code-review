@@ -23,39 +23,23 @@ inputs:
     description: "AI provider to use (default: google)"
     required: false
     default: "google"
+  version:
+    description: "Version of ai-review binary to install (e.g. v1.2.3). Defaults to latest."
+    required: false
+    default: "latest"
 
 runs:
   using: "composite"
   steps:
-    - name: Install dependencies
+    - name: Install ai-review binary
       shell: bash
       run: |
-        echo "Checking and installing required dependencies..."
-
-        # Update package list
-        sudo apt-get update
-
-        # Install required packages if not present
-        PACKAGES_TO_INSTALL=""
-
-        if ! command -v jq &> /dev/null; then
-          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL jq"
-        fi
-
-        if ! command -v curl &> /dev/null; then
-          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL curl"
-        fi
-
-        if ! command -v git &> /dev/null; then
-          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL git"
-        fi
-
-        if [ -n "$PACKAGES_TO_INSTALL" ]; then
-          echo "Installing:$PACKAGES_TO_INSTALL"
-          sudo apt-get install -y $PACKAGES_TO_INSTALL
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          bash ${{ github.action_path }}/scripts/local/install.sh
         else
-          echo "All required dependencies are already installed"
+          bash ${{ github.action_path }}/scripts/local/install.sh --version "${{ inputs.version }}"
         fi
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
     - name: Smart Code Review
       shell: bash
       env:
@@ -65,4 +49,4 @@ runs:
         AI_MODEL: ${{ inputs.ai_model }}
         AI_PROVIDER: ${{ inputs.ai_provider }}
       run: |
-        bash ${{ github.action_path }}/scripts/detect-language.sh
+        ai-review ci-review
