@@ -1,3 +1,7 @@
+# Go build artifacts
+go/coverage.out
+go/coverage.html
+
 # Node modules
 node_modules/
 
@@ -24,7 +28,7 @@ Thumbs.db
 
 # Temporary files
 ai-output.json
-reviewdog
+/reviewdog
 
 # SonarQube generated files
 .scannerwork/
@@ -39,3 +43,5 @@ sonar-report.json
 # Environment files
 .env
 .env.local
+
+*.out

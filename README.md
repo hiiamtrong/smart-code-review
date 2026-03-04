@@ -152,32 +152,26 @@ Add these secrets to your repository (Settings → Secrets and variables → Act
 
 ```
 Required tools:
-- bash (included with Git for Windows)
 - git
-- curl
-- jq
-
-Windows:
-- Git for Windows 2.40+ (provides Git Bash)
-- jq (auto-installed by installer via winget/choco/scoop)
 
 When using SonarQube locally (optional):
 - Java 11+ (SonarQube scanner requirement)
+- sonar-scanner CLI
 ```
 
 ### Testing Locally
 
 ```bash
-# Set environment variables
-export AI_GATEWAY_URL="https://your-gateway.com/api/review"
-export AI_GATEWAY_API_KEY="your-api-key"
-export GITHUB_TOKEN="your-token"
+# Install the binary first (see Local Installation below)
 
-# Test language detection
-bash scripts/detect-language.sh
+# Set credentials
+ai-review setup
 
-# Test AI review
-bash scripts/ai-review.sh
+# Run the hook manually against your staged changes
+ai-review run-hook
+
+# Check installation status
+ai-review status
 ```
 
 ## Local Installation (Git Hook)
@@ -234,18 +228,11 @@ By default, local pre-commit hooks run **AI review only** (fast, 2-10 seconds).
 To optionally enable SonarQube locally (slower, 30-60 seconds):
 
 ```bash
-# macOS/Linux: Enable SonarQube in pre-commit hooks
-bash scripts/local/enable-local-sonarqube.sh
+# Enable SonarQube and configure credentials
+ai-review config set ENABLE_SONARQUBE_LOCAL true
+ai-review config set SONAR_HOST_URL https://sonarqube.example.com
+ai-review config set SONAR_TOKEN your-sonar-token
 ```
-
-```bash
-# Windows (Git Bash): If command not found, run script directly
-bash "$HOME/.config/ai-review/hooks/enable-local-sonarqube.sh"
-```
-
-Follow prompts to enter:
-- SonarQube URL: https://sonarqube.sotatek.works
-- SonarQube Token: (from dashboard)
 
 **Windows:** Requires Java 11+ installed (see [SETUP_GUIDE.md](SETUP_GUIDE.md)).
 
@@ -259,9 +246,6 @@ ai-review config set ENABLE_SONARQUBE_LOCAL false
 
 # Only report issues on lines you changed (default: true)
 ai-review config set SONAR_FILTER_CHANGED_LINES_ONLY true
-
-# Or run the script again and choose "Disable"
-bash scripts/local/enable-local-sonarqube.sh
 ```
 
 **Changed Lines Filtering:** By default, SonarQube only reports issues on the exact lines you changed. Issues in unchanged code (existing/legacy issues) are filtered out and won't block your commit. This ensures you're only responsible for fixing issues in your changes, not pre-existing technical debt.
@@ -282,13 +266,12 @@ This installs the pre-commit hook that will review your staged changes before ea
 
 | Command | Description |
 |---------|-------------|
-| `ai-review install` | Install hook in current repository |
+| `ai-review setup` | Configure AI Gateway credentials interactively |
+| `ai-review install` | Install pre-commit hook in current repository |
 | `ai-review uninstall` | Remove hook from current repository |
 | `ai-review config` | View current configuration |
+| `ai-review config get KEY` | Get a single config value |
 | `ai-review config set KEY VALUE` | Update a config value |
-| `ai-review config edit` | Open config in editor |
-| `ai-review diff` | Show staged diff with line numbers |
-| `ai-review diff --all` | Show all changes (staged + unstaged) |
 | `ai-review status` | Check installation status |
 | `ai-review update` | Update to latest version |
 | `ai-review help` | Show help message |
@@ -347,17 +330,17 @@ AI_PROVIDER="google"
 ### Uninstalling
 
 ```bash
-# Remove from current repository
+# Remove hook from current repository
 ai-review uninstall
 
-# Remove completely (delete config and CLI)
+# Remove completely (delete config and binary)
 rm -rf ~/.config/ai-review ~/.local/bin/ai-review
 ```
 
 ### Windows Troubleshooting
 
 - **Java not found:** Install Java 11+ (`winget install EclipseAdoptium.Temurin.17.JDK` or `choco install temurin17`). Restart terminal. Add to PATH if needed.
-- **enable-local-sonarqube not found:** Run `bash "$HOME/.config/ai-review/hooks/enable-local-sonarqube.sh"`
+- **ai-review not found after install:** Restart your terminal so the updated PATH takes effect.
 - **Path errors in Git Bash:** Use forward slashes (e.g. `scripts/local/install.ps1`)
 
 See [SETUP_GUIDE.md](SETUP_GUIDE.md) for full Windows setup and troubleshooting.

@@ -1,0 +1,59 @@
+version: 2
+
+project_name: ai-review
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ai-review
+    main: ./cmd/ai-review
+    dir: go
+    binary: ai-review
+    ldflags:
+      - -s -w
+      - -X github.com/hiiamtrong/smart-code-review/internal/cmd.Version={{.Version}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: ai-review
+    builds:
+      - ai-review
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: []  # binary only — no extra files in the archive
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "\\[skip ci\\]"
+      - "^chore: sync VERSION"
+
+release:
+  github:
+    owner: hiiamtrong
+    name: smart-code-review
+  name_template: "Release {{.Tag}}"
+  draft: false
+  prerelease: auto

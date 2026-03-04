@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
+# DEPRECATED: This bash script is superseded by the Go binary 'ai-review'.
+# Install the Go binary instead: curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.sh | bash
+# Then use: ai-review ci-review
+echo "[WARN] scripts/ai-review.sh is deprecated. Use 'ai-review ci-review' (Go binary) instead." >&2
+
 # Source platform abstraction layer if available
 _AI_REVIEW_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$_AI_REVIEW_SCRIPT_DIR/lib/platform.sh" ]]; then
