@@ -217,6 +217,50 @@ func TestReplaceUnixBinary(t *testing.T) {
 	}
 }
 
+// TestReplaceUnixBinary_SourcePerm0600 reproduces the real-world bug where
+// os.CreateTemp creates the new binary with 0600 permissions. Without the
+// explicit os.Chmod in replaceUnixBinary, the installed binary would inherit
+// the 0600 mode via os.OpenFile (which ignores the mode arg for existing
+// files) and become non-executable after os.Rename.
+func TestReplaceUnixBinary_SourcePerm0600(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("replaceUnixBinary is Unix-only")
+	}
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "ai-review")
+	newBinPath := filepath.Join(dir, "ai-review-new")
+
+	// Old binary is executable (simulates the currently-installed binary).
+	if err := os.WriteFile(exePath, []byte("old-binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// New binary has 0600 — exactly what os.CreateTemp produces.
+	if err := os.WriteFile(newBinPath, []byte("new-binary"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceUnixBinary(exePath, newBinPath); err != nil {
+		t.Fatalf("replaceUnixBinary: %v", err)
+	}
+
+	data, err := os.ReadFile(exePath)
+	if err != nil {
+		t.Fatalf("read replaced binary: %v", err)
+	}
+	if string(data) != "new-binary" {
+		t.Errorf("content: got %q, want %q", data, "new-binary")
+	}
+
+	info, err := os.Stat(exePath)
+	if err != nil {
+		t.Fatalf("stat replaced binary: %v", err)
+	}
+	if info.Mode().Perm() != 0755 {
+		t.Errorf("replaced binary should be 0755, got %o", info.Mode().Perm())
+	}
+}
+
 // legacy helper kept for existing tests below — delegates to FetchLatest.
 func fetchLatestFromURL(apiURL string) (*LatestRelease, error) {
 	old := releaseAPIURL
