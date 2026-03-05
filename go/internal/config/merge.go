@@ -29,6 +29,8 @@ var allConfigKeys = []string{
 	"SONAR_PROJECT_KEY",
 	"SONAR_BLOCK_ON_HOTSPOTS",
 	"SONAR_FILTER_CHANGED_LINES_ONLY",
+	"ENABLE_SEMGREP",
+	"SEMGREP_RULES",
 }
 
 // LoadMerged loads the fully merged config with resolution order:
@@ -107,6 +109,8 @@ func DefaultsAsMap() map[string]string {
 		"SONAR_PROJECT_KEY":               "",
 		"SONAR_BLOCK_ON_HOTSPOTS":         "true",
 		"SONAR_FILTER_CHANGED_LINES_ONLY": "true",
+		"ENABLE_SEMGREP":                  "false",
+		"SEMGREP_RULES":                   "auto",
 	}
 }
 
@@ -134,6 +138,7 @@ func loadEnvRaw() map[string]string {
 		"AI_GATEWAY_URL", "AI_GATEWAY_API_KEY",
 		"AI_MODEL", "AI_PROVIDER",
 		"SONAR_HOST_URL", "SONAR_TOKEN", "SONAR_PROJECT_KEY",
+		"SEMGREP_RULES",
 	}
 	for _, k := range stringKeys {
 		if v := os.Getenv(k); v != "" {
@@ -145,6 +150,7 @@ func loadEnvRaw() map[string]string {
 		"ENABLE_AI_REVIEW", "ENABLE_SONARQUBE_LOCAL",
 		"BLOCK_ON_GATEWAY_ERROR",
 		"SONAR_BLOCK_ON_HOTSPOTS", "SONAR_FILTER_CHANGED_LINES_ONLY",
+		"ENABLE_SEMGREP",
 	}
 	for _, k := range boolKeys {
 		if v := os.Getenv(k); v != "" {

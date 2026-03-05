@@ -28,15 +28,35 @@ func PrintSeparator() {
 	cyan.Println(strings.Repeat("─", 40))
 }
 
+// PrintStageHeader prints a consistent section header for each review stage.
+func PrintStageHeader(name string) {
+	Divider()
+	Bold.Printf("── %s ", name)
+	fmt.Println()
+}
+
 // PrintIssue prints a single diagnostic issue in the same format as the bash version.
 func PrintIssue(severity, file string, line int, message string) {
+	printIssueWithSource("", severity, file, line, message)
+}
+
+// PrintIssueWithSource prints a diagnostic with a tool source label.
+func PrintIssueWithSource(source, severity, file string, line int, message string) {
+	printIssueWithSource(source, severity, file, line, message)
+}
+
+func printIssueWithSource(source, severity, file string, line int, message string) {
+	prefix := ""
+	if source != "" {
+		prefix = source + ": "
+	}
 	switch severity {
 	case "ERROR":
-		red.Printf("[ERROR] %s\n", message)
+		red.Printf("[ERROR] %s%s\n", prefix, message)
 	case "WARNING":
-		yellow.Printf("[WARN] %s\n", message)
+		yellow.Printf("[WARN] %s%s\n", prefix, message)
 	default:
-		blue.Printf("[INFO] %s\n", message)
+		blue.Printf("[INFO] %s%s\n", prefix, message)
 	}
 	Bold.Printf("        %s:%d\n", file, line)
 }

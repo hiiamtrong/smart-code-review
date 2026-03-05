@@ -38,6 +38,10 @@ type Config struct {
 	SonarProjectKey    string
 	SonarBlockHotspots bool
 	SonarFilterChanged bool
+
+	// Semgrep
+	EnableSemgrep bool
+	SemgrepRules  string
 }
 
 // Defaults returns a Config populated with default values.
@@ -47,6 +51,8 @@ func Defaults() *Config {
 		AIProvider:          "google",
 		EnableAIReview:      true,
 		EnableSonarQube:     false,
+		EnableSemgrep:       false,
+		SemgrepRules:        "auto",
 		BlockOnGatewayError: true,
 		GatewayTimeoutSec:   120,
 		SonarBlockHotspots:  true,
@@ -130,6 +136,10 @@ func GetField(cfg *Config, key string) string {
 		return boolToStr(cfg.SonarBlockHotspots)
 	case "SONAR_FILTER_CHANGED_LINES_ONLY":
 		return boolToStr(cfg.SonarFilterChanged)
+	case "ENABLE_SEMGREP":
+		return boolToStr(cfg.EnableSemgrep)
+	case "SEMGREP_RULES":
+		return cfg.SemgrepRules
 	default:
 		return ""
 	}
@@ -188,6 +198,14 @@ func SetField(cfg *Config, key, value string) error {
 			return fmt.Errorf("SONAR_FILTER_CHANGED_LINES_ONLY must be true/false")
 		}
 		cfg.SonarFilterChanged = b
+	case "ENABLE_SEMGREP":
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("ENABLE_SEMGREP must be true/false")
+		}
+		cfg.EnableSemgrep = b
+	case "SEMGREP_RULES":
+		cfg.SemgrepRules = value
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -253,6 +271,8 @@ func formatShellConfig(cfg *Config) string {
 	write("SONAR_PROJECT_KEY", cfg.SonarProjectKey)
 	writeBool("SONAR_BLOCK_ON_HOTSPOTS", cfg.SonarBlockHotspots)
 	writeBool("SONAR_FILTER_CHANGED_LINES_ONLY", cfg.SonarFilterChanged)
+	writeBool("ENABLE_SEMGREP", cfg.EnableSemgrep)
+	write("SEMGREP_RULES", cfg.SemgrepRules)
 
 	return sb.String()
 }

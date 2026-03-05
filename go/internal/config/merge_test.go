@@ -15,8 +15,8 @@ const (
 
 func TestDefaultsAsMap_AllKeys(t *testing.T) {
 	m := DefaultsAsMap()
-	if len(m) != 13 {
-		t.Errorf("DefaultsAsMap: got %d keys, want 13", len(m))
+	if len(m) != len(allConfigKeys) {
+		t.Errorf("DefaultsAsMap: got %d keys, want %d", len(m), len(allConfigKeys))
 	}
 	for _, k := range allConfigKeys {
 		if _, ok := m[k]; !ok {

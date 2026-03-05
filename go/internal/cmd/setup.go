@@ -52,6 +52,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	display.Bold.Println("── Step 1: Feature Flags ──")
 	cfg.EnableAIReview = promptBool(reader, "Enable AI Review?", cfg.EnableAIReview)
 	cfg.EnableSonarQube = promptBool(reader, "Enable SonarQube Review?", cfg.EnableSonarQube)
+	cfg.EnableSemgrep = promptBool(reader, "Enable Semgrep Analysis?", cfg.EnableSemgrep)
 
 	// ── Step 2: AI Gateway (conditional) ──
 	if cfg.EnableAIReview {
@@ -80,6 +81,17 @@ func runSetup(cmd *cobra.Command, args []string) error {
 			cfg.SonarProjectKey = detectRepoName()
 		}
 		cfg.SonarProjectKey = promptStringRequired(reader, "SonarQube Project Key", cfg.SonarProjectKey)
+	}
+
+	// ── Step 4: Semgrep Settings (conditional) ──
+	if cfg.EnableSemgrep {
+		fmt.Println()
+		display.Bold.Println("── Step 4: Semgrep Settings ──")
+		fmt.Println("  Rules config: 'auto' (auto-detect), 'p/default', or path to .semgrep.yml")
+		cfg.SemgrepRules = promptString(reader, "Semgrep Rules", cfg.SemgrepRules, false)
+		if cfg.SemgrepRules == "" {
+			cfg.SemgrepRules = "auto"
+		}
 	}
 
 	// ── Summary ──
@@ -203,6 +215,7 @@ func printSetupSummary(cfg *config.Config) {
 	display.PrintSeparator()
 	fmt.Printf("  %-35s %s\n", "ENABLE_AI_REVIEW", boolStr(cfg.EnableAIReview))
 	fmt.Printf("  %-35s %s\n", "ENABLE_SONARQUBE_LOCAL", boolStr(cfg.EnableSonarQube))
+	fmt.Printf("  %-35s %s\n", "ENABLE_SEMGREP", boolStr(cfg.EnableSemgrep))
 	if cfg.EnableAIReview {
 		fmt.Printf("  %-35s %s\n", "AI_GATEWAY_URL", orNotSet(cfg.AIGatewayURL))
 		fmt.Printf("  %-35s %s\n", "AI_GATEWAY_API_KEY", maskIfSet(cfg.AIGatewayAPIKey))
@@ -213,6 +226,9 @@ func printSetupSummary(cfg *config.Config) {
 		fmt.Printf("  %-35s %s\n", "SONAR_HOST_URL", orNotSet(cfg.SonarHostURL))
 		fmt.Printf("  %-35s %s\n", "SONAR_TOKEN", maskIfSet(cfg.SonarToken))
 		fmt.Printf("  %-35s %s\n", "SONAR_PROJECT_KEY", orNotSet(cfg.SonarProjectKey))
+	}
+	if cfg.EnableSemgrep {
+		fmt.Printf("  %-35s %s\n", "SEMGREP_RULES", orNotSet(cfg.SemgrepRules))
 	}
 	display.PrintSeparator()
 }

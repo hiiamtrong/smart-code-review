@@ -15,6 +15,7 @@ import (
 	"github.com/hiiamtrong/smart-code-review/internal/gateway"
 	"github.com/hiiamtrong/smart-code-review/internal/git"
 	"github.com/hiiamtrong/smart-code-review/internal/language"
+	"github.com/hiiamtrong/smart-code-review/internal/semgrep"
 	"github.com/hiiamtrong/smart-code-review/internal/sonarqube"
 )
 
@@ -67,13 +68,29 @@ func runHook(cmd *cobra.Command, args []string) error {
 
 	var counts hookCounts
 
-	if cfg.EnableSonarQube && cfg.SonarToken != "" {
-		counts = hookRunSonarQube(cfg, repoRoot, diff)
-		if counts.blocked {
+	// Stage 1: Semgrep (local static analysis — fastest)
+	if cfg.EnableSemgrep {
+		sgCounts := hookRunSemgrep(cfg, repoRoot, diff)
+		counts.errCount += sgCounts.errCount
+		counts.warnCount += sgCounts.warnCount
+		counts.infoCount += sgCounts.infoCount
+		if sgCounts.blocked {
 			return errBlocked
 		}
 	}
 
+	// Stage 2: SonarQube (server-based analysis)
+	if cfg.EnableSonarQube && cfg.SonarToken != "" {
+		sqCounts := hookRunSonarQube(cfg, repoRoot, diff)
+		counts.errCount += sqCounts.errCount
+		counts.warnCount += sqCounts.warnCount
+		counts.infoCount += sqCounts.infoCount
+		if sqCounts.blocked {
+			return errBlocked
+		}
+	}
+
+	// Stage 3: AI code review
 	aiCounts, result := hookRunAIReview(cfg, annotatedDiff, lang, gitInfo)
 	if aiCounts.blocked {
 		return errBlocked
@@ -140,8 +157,7 @@ func hookPrepareDiff() (rawDiff, annotated, lang, repoRoot string, gitInfo git.G
 // hookRunSonarQube runs the full SonarQube analysis pipeline and returns
 // diagnostic counts and whether the commit should be blocked.
 func hookRunSonarQube(cfg *config.Config, repoRoot, diff string) hookCounts {
-	display.Divider()
-	display.LogInfo("Running SonarQube analysis...")
+	display.PrintStageHeader("SonarQube Analysis")
 
 	var counts hookCounts
 
@@ -189,7 +205,7 @@ func hookRunSonarQube(cfg *config.Config, repoRoot, diff string) hookCounts {
 	}
 
 	for _, d := range sonarRes.Diagnostics {
-		display.PrintIssue(d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
+		display.PrintIssueWithSource("SonarQube", d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
 		switch d.Severity {
 		case "ERROR":
 			counts.errCount++
@@ -217,12 +233,57 @@ func hookRunSonarQube(cfg *config.Config, repoRoot, diff string) hookCounts {
 	return counts
 }
 
+// hookRunSemgrep runs Semgrep on staged files and returns diagnostic counts.
+func hookRunSemgrep(cfg *config.Config, repoRoot, diff string) hookCounts {
+	display.PrintStageHeader("Semgrep Analysis")
+
+	var counts hookCounts
+
+	bin, err := semgrep.FindSemgrep()
+	if err != nil {
+		display.LogWarn(fmt.Sprintf("Semgrep not found: %v", err))
+		return counts
+	}
+
+	stagedFiles := extractStagedFiles(diff)
+	if len(stagedFiles) == 0 {
+		return counts
+	}
+
+	sgCfg := semgrep.SemgrepConfig{
+		Rules: cfg.SemgrepRules,
+	}
+
+	res, scanErr := semgrep.ScanFiles(bin, sgCfg, stagedFiles, repoRoot)
+	if scanErr != nil {
+		display.LogWarn(fmt.Sprintf("Semgrep scan failed: %v", scanErr))
+		return counts
+	}
+
+	for _, d := range res.Diagnostics {
+		display.PrintIssueWithSource("Semgrep", d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
+		switch d.Severity {
+		case "ERROR":
+			counts.errCount++
+		case "WARNING":
+			counts.warnCount++
+		default:
+			counts.infoCount++
+		}
+	}
+
+	if counts.errCount > 0 {
+		display.LogError("Commit blocked by Semgrep errors")
+		counts.blocked = true
+	}
+
+	return counts
+}
+
 // hookRunAIReview calls the AI gateway for code review and returns diagnostic
 // counts plus the result. A nil result means a non-blocking gateway error.
 func hookRunAIReview(cfg *config.Config, annotatedDiff, lang string, gitInfo git.GitInfo) (hookCounts, *gateway.ReviewResult) {
-	display.Divider()
-	display.LogInfo("Running AI code review...")
-	display.Divider()
+	display.PrintStageHeader("AI Code Review")
 
 	var counts hookCounts
 
@@ -235,7 +296,7 @@ func hookRunAIReview(cfg *config.Config, annotatedDiff, lang string, gitInfo git
 	}
 
 	onDiagnostic := func(d gateway.Diagnostic) {
-		display.PrintIssue(d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
+		display.PrintIssueWithSource("AI", d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
 		switch d.Severity {
 		case "ERROR":
 			counts.errCount++
@@ -260,7 +321,7 @@ func hookRunAIReview(cfg *config.Config, annotatedDiff, lang string, gitInfo git
 	// Recount from result if streaming callback did not fire (sync fallback path).
 	if counts.errCount+counts.warnCount+counts.infoCount == 0 && result != nil {
 		for _, d := range result.Diagnostics {
-			display.PrintIssue(d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
+			display.PrintIssueWithSource("AI", d.Severity, d.Location.Path, d.Location.Range.Start.Line, d.Message)
 			switch d.Severity {
 			case "ERROR":
 				counts.errCount++

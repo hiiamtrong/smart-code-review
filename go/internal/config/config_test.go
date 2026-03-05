@@ -133,6 +133,8 @@ func TestSetField(t *testing.T) {
 		{"ENABLE_AI_REVIEW", "false", func() bool { return !cfg.EnableAIReview }},
 		{"GATEWAY_TIMEOUT_SEC", "60", func() bool { return cfg.GatewayTimeoutSec == 60 }},
 		{"BLOCK_ON_GATEWAY_ERROR", "false", func() bool { return !cfg.BlockOnGatewayError }},
+		{"ENABLE_SEMGREP", "true", func() bool { return cfg.EnableSemgrep }},
+		{"SEMGREP_RULES", "p/default", func() bool { return cfg.SemgrepRules == "p/default" }},
 	}
 
 	for _, tt := range tests {
@@ -168,6 +170,8 @@ func TestGetField_allKeys(t *testing.T) {
 	cfg.SonarProjectKey = "proj-key"
 	cfg.SonarBlockHotspots = false
 	cfg.SonarFilterChanged = false
+	cfg.EnableSemgrep = true
+	cfg.SemgrepRules = "p/security-audit"
 
 	cases := []struct{ key, want string }{
 		{"AI_GATEWAY_URL", "https://gw.example.com"},
@@ -183,6 +187,8 @@ func TestGetField_allKeys(t *testing.T) {
 		{"SONAR_PROJECT_KEY", "proj-key"},
 		{"SONAR_BLOCK_ON_HOTSPOTS", "false"},
 		{"SONAR_FILTER_CHANGED_LINES_ONLY", "false"},
+		{"ENABLE_SEMGREP", "true"},
+		{"SEMGREP_RULES", "p/security-audit"},
 	}
 	for _, tc := range cases {
 		got := GetField(cfg, tc.key)

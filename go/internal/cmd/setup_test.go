@@ -177,10 +177,11 @@ func TestRunSetup_AIOnly(t *testing.T) {
 	defer func() { readPasswordFn = orig }()
 	readPasswordFn = func() (string, error) { return "test-api-key", nil }
 
-	// Simulate stdin: step1 (Y, n), step2 (URL, model, provider), summary (Y)
+	// Simulate stdin: step1 (Y, n, n), step2 (URL, model, provider), summary (Y)
 	input := strings.Join([]string{
 		"y",    // Enable AI Review
 		"n",    // Enable SonarQube
+		"n",    // Enable Semgrep
 		"https://gateway.example.com", // AI Gateway URL
 		"",                            // AI Model (accept default)
 		"",                            // AI Provider (accept default)
@@ -243,6 +244,7 @@ func TestRunSetup_WithSonarQube(t *testing.T) {
 	input := strings.Join([]string{
 		"y",    // Enable AI Review
 		"y",    // Enable SonarQube
+		"n",    // Enable Semgrep
 		"https://gateway.example.com", // AI Gateway URL
 		"custom-model",                // AI Model
 		"openai",                      // AI Provider
@@ -307,6 +309,7 @@ func TestRunSetup_BothDisabled(t *testing.T) {
 	input := strings.Join([]string{
 		"n", // Enable AI Review
 		"n", // Enable SonarQube
+		"n", // Enable Semgrep
 		"y", // Save configuration
 	}, "\n") + "\n"
 
@@ -373,6 +376,7 @@ func TestRunSetup_ProjectFlag(t *testing.T) {
 	input := strings.Join([]string{
 		"n", // Enable AI Review
 		"n", // Enable SonarQube
+		"n", // Enable Semgrep
 		"y", // Save configuration
 	}, "\n") + "\n"
 
@@ -410,6 +414,7 @@ func TestRunSetup_AbortAtSummary(t *testing.T) {
 	input := strings.Join([]string{
 		"y",                           // Enable AI Review
 		"n",                           // Enable SonarQube
+		"n",                           // Enable Semgrep
 		"https://gateway.example.com", // AI Gateway URL
 		"",                            // AI Model
 		"",                            // AI Provider
