@@ -18,7 +18,7 @@ Write-Host "AI Review Installer for Windows" -ForegroundColor Cyan
 Write-Host "===================================="
 
 # ── Detect architecture ───────────────────────────────────────────────────────
-$arch = if ([System.Environment]::Is64BitOperatingSystem) { "x86_64" } else {
+$arch = if ([System.Environment]::Is64BitOperatingSystem) { "amd64" } else {
     Write-Err "32-bit Windows is not supported"; exit 1
 }
 
