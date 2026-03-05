@@ -80,10 +80,10 @@ function Expand-Archive {
     # ── Architecture detection ───────────────────────────────────────────────
 
     Context 'Architecture detection' {
-        It 'detects x86_64 on 64-bit OS' {
+        It 'detects amd64 on 64-bit OS' {
             $r = Invoke-Installer
             $r.ExitCode | Should -Be 0
-            $r.Output   | Should -Match 'windows/x86_64'
+            $r.Output   | Should -Match 'windows/amd64'
         }
 
         It 'detects ARM64 when PROCESSOR_ARCHITECTURE is ARM64' {
@@ -143,6 +143,37 @@ function Expand-Archive {
             $r = Invoke-Installer
             $r.ExitCode | Should -Be 0
             $r.Output   | Should -Match 'Added .+ to .* PATH'
+        }
+    }
+
+    # ── Download URL architecture naming ──────────────────────────────────────
+
+    Context 'Download URL uses goreleaser arch naming' {
+        It 'downloads ai-review_windows_amd64.zip (not x86_64)' {
+            $r = Invoke-Installer
+            $r.ExitCode | Should -Be 0
+            $r.Output   | Should -Match 'ai-review_windows_amd64\.zip'
+            $r.Output   | Should -Not -Match 'x86_64'
+        }
+
+        It 'downloads ai-review_windows_arm64.zip for ARM64' {
+            $r = Invoke-Installer -ExtraPreamble '$env:PROCESSOR_ARCHITECTURE = "ARM64"'
+            $r.ExitCode | Should -Be 0
+            $r.Output   | Should -Match 'ai-review_windows_arm64\.zip'
+        }
+    }
+
+    # ── Session PATH refresh ──────────────────────────────────────────────────
+
+    Context 'Session PATH refresh' {
+        It 'script contains $env:Path update for immediate availability' {
+            $content = Get-Content -Path $Script:ScriptPath -Raw
+            $content | Should -Match '\$env:Path\s*=\s*"\$BinDir;\$env:Path"'
+        }
+
+        It 'script checks $env:Path before adding (idempotent)' {
+            $content = Get-Content -Path $Script:ScriptPath -Raw
+            $content | Should -Match '\$env:Path -notlike "\*\$BinDir\*"'
         }
     }
 

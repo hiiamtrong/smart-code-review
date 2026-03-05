@@ -108,10 +108,10 @@ assert_success() {
 
 # ── detect_platform ───────────────────────────────────────────────────────────
 
-@test "detect_platform: Linux/x86_64" {
+@test "detect_platform: Linux/amd64 (uname x86_64)" {
   run "${INSTALLER[@]}" --version v9.9.9
   assert_success
-  [[ "$output" == *"linux/x86_64"* ]]
+  [[ "$output" == *"linux/amd64"* ]]
 }
 
 @test "detect_platform: Darwin/arm64" {
@@ -254,7 +254,39 @@ assert_success() {
   [ "$(grep -c 'ai-review installer' "$TEST_HOME/.zshrc")" -eq 1 ]
 }
 
-# ── installation result ───────────────────────────────────────────────────────
+# ── download URL architecture naming (goreleaser convention) ──────────────────
+
+@test "download_binary: archive name uses amd64 for x86_64 hosts" {
+  # Override curl to log the download URL instead of copying a file
+  make_stub curl \
+'PREV="" OUTFILE=""
+for arg; do
+  [[ "$PREV" == "-o" ]] && OUTFILE="$arg"
+  PREV="$arg"
+done
+if [[ -n "$OUTFILE" ]]; then
+  echo "DOWNLOAD_URL=$PREV" >&2
+  cp "$FAKE_ARCHIVE" "$OUTFILE"
+else
+  printf '"'"'{"tag_name": "v9.9.9"}\n'"'"'
+fi'
+  run "${INSTALLER[@]}" --version v9.9.9
+  assert_success
+  [[ "$output" == *"ai-review_linux_amd64"* ]]
+}
+
+@test "download_binary: archive name uses arm64 for arm64 hosts" {
+  make_stub uname 'case "$1" in -s) echo "Darwin";; -m) echo "arm64";; esac'
+  run "${INSTALLER[@]}" --version v9.9.9
+  assert_success
+  [[ "$output" == *"ai-review_darwin_arm64"* ]]
+}
+
+@test "download_binary: archive name never contains x86_64" {
+  run "${INSTALLER[@]}" --version v9.9.9
+  assert_success
+  [[ "$output" != *"x86_64"* ]]
+}
 
 # ── print_next_steps output ───────────────────────────────────────────────────
 
