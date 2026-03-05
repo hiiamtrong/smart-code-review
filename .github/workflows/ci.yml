@@ -90,14 +90,23 @@ jobs:
 
   # ── BATS tests for install.sh ────────────────────────────────────────────────
   bash-tests:
-    name: BATS · install.sh
-    runs-on: ubuntu-latest
+    name: BATS · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install bats-core
+      - name: Install bats-core (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get install -y bats
+
+      - name: Install bats-core (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bats-core
 
       - name: Run BATS tests
         run: bats scripts/local/tests/install.bats
