@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -13,13 +14,20 @@ import (
 )
 
 const (
-	propsFile      = "sonar-project.properties"
-	scannerDir     = ".scannerwork"
-	errFmtString   = "error: %v"
-	testFileFooGo  = "src/foo.go"
-	testProjectKey = "my-project"
-	testSonarURL   = "http://sonar.example.com"
-	reportTaskFile = "report-task.txt"
+	propsFile          = "sonar-project.properties"
+	scannerDir         = ".scannerwork"
+	errFmtString       = "error: %v"
+	testFileFooGo      = "src/foo.go"
+	testFileBarGo      = "src/bar.go"
+	testFileMainGo     = "main.go"
+	testProjectKey     = "my-project"
+	testSonarURL       = "http://sonar.example.com"
+	reportTaskFile     = "report-task.txt"
+	errExpect1Diag     = "expected 1 diagnostic, got %d"
+	headerContentType  = "Content-Type"
+	mimeJSON           = "application/json"
+	apiIssuesSearch    = "/api/issues/search"
+	errFetchResults    = "FetchResults error: %v"
 )
 
 // ─── ParseStagedLineRanges ────────────────────────────────────────────────────
@@ -117,7 +125,7 @@ func TestDedupedDirs_removesSubdir(t *testing.T) {
 }
 
 func TestDedupedDirs_rootFiles(t *testing.T) {
-	files := []string{"main.go", "go.mod"}
+	files := []string{testFileMainGo, "go.mod"}
 	result := dedupedDirs(files)
 	if result != "." {
 		t.Errorf("expected \".\", got %q", result)
@@ -191,7 +199,7 @@ func TestFilterByChangedLines_keeps(t *testing.T) {
 	ranges := []lineRange{{File: testFileFooGo, Start: 5, End: 15}}
 	out := filterByChangedLines(diags, ranges)
 	if len(out) != 1 {
-		t.Errorf("expected 1 diagnostic, got %d", len(out))
+		t.Errorf(errExpect1Diag, len(out))
 	}
 }
 
@@ -498,8 +506,8 @@ func TestFetchResults_http(t *testing.T) {
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if strings.Contains(r.URL.Path, "/api/issues/search") {
+		w.Header().Set(headerContentType, mimeJSON)
+		if strings.Contains(r.URL.Path, apiIssuesSearch) {
 			json.NewEncoder(w).Encode(issuesPayload)
 		} else {
 			json.NewEncoder(w).Encode(hotspotsPayload)
@@ -515,10 +523,10 @@ func TestFetchResults_http(t *testing.T) {
 
 	result, err := FetchResults(cfg, nil)
 	if err != nil {
-		t.Fatalf("FetchResults error: %v", err)
+		t.Fatalf(errFetchResults, err)
 	}
 	if len(result.Diagnostics) != 1 {
-		t.Errorf("expected 1 diagnostic, got %d", len(result.Diagnostics))
+		t.Errorf(errExpect1Diag, len(result.Diagnostics))
 	}
 	if result.Diagnostics[0].Severity != "WARNING" {
 		t.Errorf("Severity = %q, want WARNING (MINOR)", result.Diagnostics[0].Severity)
@@ -542,8 +550,8 @@ func TestFetchResults_truncationFlagWhenPageLimitHit(t *testing.T) {
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if strings.Contains(r.URL.Path, "/api/issues/search") {
+		w.Header().Set(headerContentType, mimeJSON)
+		if strings.Contains(r.URL.Path, apiIssuesSearch) {
 			json.NewEncoder(w).Encode(map[string]interface{}{"issues": issues})
 		} else {
 			json.NewEncoder(w).Encode(map[string]interface{}{"hotspots": []interface{}{}})
@@ -554,9 +562,350 @@ func TestFetchResults_truncationFlagWhenPageLimitHit(t *testing.T) {
 	cfg := SonarConfig{HostURL: srv.URL, Token: "tok", ProjectKey: "proj"}
 	result, err := FetchResults(cfg, nil)
 	if err != nil {
-		t.Fatalf("FetchResults error: %v", err)
+		t.Fatalf(errFetchResults, err)
 	}
 	if !result.Truncated {
 		t.Error("expected Truncated=true when 500 issues returned")
+	}
+}
+
+// ─── changedFilesFromRanges ───────────────────────────────────────────────────
+
+func TestChangedFilesFromRanges_basic(t *testing.T) {
+	ranges := []lineRange{
+		{File: "src/foo.go", Start: 1, End: 10},
+		{File: testFileBarGo, Start: 5, End: 20},
+		{File: "src/foo.go", Start: 30, End: 40}, // duplicate file
+	}
+	files := changedFilesFromRanges(ranges)
+	if len(files) != 2 {
+		t.Fatalf("expected 2 unique files, got %d: %v", len(files), files)
+	}
+	if files[0] != "src/foo.go" || files[1] != testFileBarGo {
+		t.Errorf("unexpected files: %v", files)
+	}
+}
+
+func TestChangedFilesFromRanges_empty(t *testing.T) {
+	files := changedFilesFromRanges(nil)
+	if len(files) != 0 {
+		t.Errorf("expected 0 files for nil input, got %d", len(files))
+	}
+}
+
+func TestChangedFilesFromRanges_singleFile(t *testing.T) {
+	ranges := []lineRange{
+		{File: testFileMainGo, Start: 1, End: 5},
+	}
+	files := changedFilesFromRanges(ranges)
+	if len(files) != 1 || files[0] != testFileMainGo {
+		t.Errorf("expected [main.go], got %v", files)
+	}
+}
+
+// ─── FindScanner ──────────────────────────────────────────────────────────────
+
+func TestFindScanner_foundInPATH(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a fake sonar-scanner binary
+	name := scannerName
+	if runtime.GOOS == "windows" {
+		name = scannerName + ".bat"
+	}
+	fakeBin := filepath.Join(dir, name)
+	if err := os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepend our temp dir to PATH
+	origPath := os.Getenv("PATH")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+origPath)
+
+	path, err := FindScanner()
+	if err != nil {
+		t.Fatalf("FindScanner error: %v", err)
+	}
+	if path == "" {
+		t.Fatal("FindScanner returned empty path")
+	}
+	// The returned path should point into our temp dir
+	if !strings.HasPrefix(path, dir) {
+		t.Errorf("FindScanner returned %q, expected path under %q", path, dir)
+	}
+}
+
+func TestFindScanner_notFound(t *testing.T) {
+	// Set PATH to an empty temp dir so scanner won't be found
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	// Also override HOME so ~/.sonar fallback doesn't find anything
+	t.Setenv("HOME", dir)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", dir)
+	}
+
+	_, err := FindScanner()
+	if err == nil {
+		t.Fatal("expected error when scanner not in PATH")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention 'not found': %v", err)
+	}
+}
+
+func TestFindScanner_foundInSonarHome(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping ~/.sonar test on Windows")
+	}
+	dir := t.TempDir()
+	// Create ~/.sonar/sonar-scanner/bin/sonar-scanner
+	binDir := filepath.Join(dir, ".sonar", scannerName, "bin")
+	os.MkdirAll(binDir, 0755)
+	fakeBin := filepath.Join(binDir, scannerName)
+	os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0755)
+
+	// Set PATH to empty dir and HOME to our temp dir
+	emptyDir := t.TempDir()
+	t.Setenv("PATH", emptyDir)
+	t.Setenv("HOME", dir)
+
+	path, err := FindScanner()
+	if err != nil {
+		t.Fatalf("FindScanner error: %v", err)
+	}
+	if path != fakeBin {
+		t.Errorf("FindScanner = %q, want %q", path, fakeBin)
+	}
+}
+
+// ─── FetchResults with FilterChanged ──────────────────────────────────────────
+
+func TestFetchResults_filterChanged(t *testing.T) {
+	issuesPayload := map[string]interface{}{
+		"issues": []map[string]interface{}{
+			{
+				"message":   "filtered issue",
+				"rule":      "go:S002",
+				"severity":  "CRITICAL",
+				"component": "proj:src/changed.go",
+				"line":      10,
+			},
+		},
+	}
+	hotspotsPayload := map[string]interface{}{
+		"hotspots": []map[string]interface{}{},
+	}
+
+	var capturedIssuesURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(headerContentType, mimeJSON)
+		if strings.Contains(r.URL.Path, apiIssuesSearch) {
+			capturedIssuesURL = r.URL.String()
+			json.NewEncoder(w).Encode(issuesPayload)
+		} else {
+			json.NewEncoder(w).Encode(hotspotsPayload)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := SonarConfig{
+		HostURL:       srv.URL,
+		Token:         "tok",
+		ProjectKey:    "proj",
+		FilterChanged: true,
+	}
+	ranges := []lineRange{
+		{File: "src/changed.go", Start: 5, End: 15},
+		{File: "src/other.go", Start: 1, End: 3},
+	}
+
+	result, err := FetchResults(cfg, ranges)
+	if err != nil {
+		t.Fatalf(errFetchResults, err)
+	}
+	// Verify the URL was narrowed to specific components
+	if !strings.Contains(capturedIssuesURL, "proj:src/changed.go") {
+		t.Errorf("expected component filter in URL, got %q", capturedIssuesURL)
+	}
+	if !strings.Contains(capturedIssuesURL, "proj:src/other.go") {
+		t.Errorf("expected second component in URL, got %q", capturedIssuesURL)
+	}
+	if len(result.Diagnostics) != 1 {
+		t.Errorf(errExpect1Diag, len(result.Diagnostics))
+	}
+	// With FilterChanged, Truncated should be false even for many issues
+	if result.Truncated {
+		t.Error("Truncated should be false when FilterChanged=true")
+	}
+}
+
+func TestFetchResults_filterChangedNoRanges(t *testing.T) {
+	// FilterChanged=true but no ranges → should fall back to project-wide query
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(headerContentType, mimeJSON)
+		if strings.Contains(r.URL.Path, apiIssuesSearch) {
+			json.NewEncoder(w).Encode(map[string]interface{}{"issues": []interface{}{}})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{"hotspots": []interface{}{}})
+		}
+	}))
+	defer srv.Close()
+
+	cfg := SonarConfig{
+		HostURL:       srv.URL,
+		Token:         "tok",
+		ProjectKey:    "proj",
+		FilterChanged: true,
+	}
+	result, err := FetchResults(cfg, nil)
+	if err != nil {
+		t.Fatalf(errFetchResults, err)
+	}
+	if len(result.Diagnostics) != 0 {
+		t.Errorf("expected 0 diagnostics, got %d", len(result.Diagnostics))
+	}
+}
+
+// ─── WaitForTask additional statuses ──────────────────────────────────────────
+
+func TestWaitForTask_taskFailed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"task": map[string]string{"status": "FAILED"},
+		})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	scannerPath := filepath.Join(dir, scannerDir)
+	os.MkdirAll(scannerPath, 0755)
+	os.WriteFile(filepath.Join(scannerPath, reportTaskFile),
+		[]byte("ceTaskId=task-fail\n"), 0644)
+
+	err := WaitForTask(srv.URL, "tok", dir, false)
+	if err == nil {
+		t.Fatal("expected error for FAILED task")
+	}
+	if !strings.Contains(err.Error(), "failed") {
+		t.Errorf("error should mention failed: %v", err)
+	}
+}
+
+func TestWaitForTask_taskCanceled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"task": map[string]string{"status": "CANCELED"},
+		})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	scannerPath := filepath.Join(dir, scannerDir)
+	os.MkdirAll(scannerPath, 0755)
+	os.WriteFile(filepath.Join(scannerPath, reportTaskFile),
+		[]byte("ceTaskId=task-cancel\n"), 0644)
+
+	err := WaitForTask(srv.URL, "tok", dir, false)
+	if err == nil {
+		t.Fatal("expected error for CANCELED task")
+	}
+	if !strings.Contains(err.Error(), "canceled") {
+		t.Errorf("error should mention canceled: %v", err)
+	}
+}
+
+// ─── RunAnalysis ──────────────────────────────────────────────────────────────
+
+func TestRunAnalysis_binaryNotFound(t *testing.T) {
+	cfg := SonarConfig{
+		HostURL: "http://localhost:9000",
+		Token:   "tok",
+	}
+	err := RunAnalysis("/nonexistent/sonar-scanner", cfg, nil)
+	if err == nil {
+		t.Fatal("expected error for missing binary")
+	}
+	if !strings.Contains(err.Error(), "sonar-scanner failed") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRunAnalysis_ciMode(t *testing.T) {
+	cfg := SonarConfig{
+		HostURL:      "http://localhost:9000",
+		Token:        "tok",
+		IsCI:         true,
+		PRNumber:     "42",
+		PRHeadBranch: "feature",
+		BaseBranch:   "main",
+	}
+	// Will fail because binary doesn't exist, but exercises the CI arg-building path
+	err := RunAnalysis("/nonexistent/sonar-scanner", cfg, nil)
+	if err == nil {
+		t.Fatal("expected error for missing binary")
+	}
+}
+
+func TestRunAnalysis_localWithStagedFiles(t *testing.T) {
+	cfg := SonarConfig{
+		HostURL: "http://localhost:9000",
+		Token:   "tok",
+		IsCI:    false,
+	}
+	stagedFiles := []string{"src/foo.go", testFileBarGo}
+	// Will fail because binary doesn't exist, but exercises the local arg-building path
+	err := RunAnalysis("/nonexistent/sonar-scanner", cfg, stagedFiles)
+	if err == nil {
+		t.Fatal("expected error for missing binary")
+	}
+}
+
+// ─── FetchResults error handling ──────────────────────────────────────────────
+
+func TestFetchResults_issuesAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, apiIssuesSearch) {
+			w.Write([]byte("not json"))
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{"hotspots": []interface{}{}})
+		}
+	}))
+	defer srv.Close()
+
+	cfg := SonarConfig{HostURL: srv.URL, Token: "tok", ProjectKey: "proj"}
+	_, err := FetchResults(cfg, nil)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON response")
+	}
+}
+
+func TestFetchResults_hotspotsTruncated(t *testing.T) {
+	// Return 500 hotspots to trigger truncation
+	hotspots := make([]map[string]interface{}, 500)
+	for i := range hotspots {
+		hotspots[i] = map[string]interface{}{"key": i}
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(headerContentType, mimeJSON)
+		if strings.Contains(r.URL.Path, apiIssuesSearch) {
+			json.NewEncoder(w).Encode(map[string]interface{}{"issues": []interface{}{}})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{"hotspots": hotspots})
+		}
+	}))
+	defer srv.Close()
+
+	cfg := SonarConfig{HostURL: srv.URL, Token: "tok", ProjectKey: "proj"}
+	result, err := FetchResults(cfg, nil)
+	if err != nil {
+		t.Fatalf(errFetchResults, err)
+	}
+	if !result.Truncated {
+		t.Error("expected Truncated=true when 500 hotspots returned")
+	}
+	if result.HotspotCount != 500 {
+		t.Errorf("HotspotCount = %d, want 500", result.HotspotCount)
 	}
 }

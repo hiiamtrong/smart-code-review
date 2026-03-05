@@ -277,6 +277,27 @@ func TestGatewayTimeoutSecEnvVar(t *testing.T) {
 	}
 }
 
+func TestConfigDir_UsesHome(t *testing.T) {
+	dir := t.TempDir()
+	setTestHome(t, dir)
+
+	got := ConfigDir()
+	if got == "" {
+		t.Fatal("ConfigDir returned empty string")
+	}
+	if runtime.GOOS == "windows" {
+		want := filepath.Join(dir, ".config", "ai-review")
+		if got != want {
+			t.Errorf("ConfigDir on windows: got %q, want %q", got, want)
+		}
+	} else {
+		want := filepath.Join(dir, ".config", "ai-review")
+		if got != want {
+			t.Errorf("ConfigDir: got %q, want %q", got, want)
+		}
+	}
+}
+
 func TestConfigFilePermissions(t *testing.T) {
 	dir := t.TempDir()
 	setTestHome(t, dir)

@@ -52,12 +52,6 @@ func FetchLatest() (*LatestRelease, error) {
 
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
-	// Normalize arch names to match goreleaser conventions.
-	if goarch == "amd64" {
-		goarch = "x86_64"
-	} else if goarch == "arm64" {
-		goarch = "arm64"
-	}
 
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)

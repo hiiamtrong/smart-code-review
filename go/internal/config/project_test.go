@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -196,6 +197,89 @@ func TestRemoveProject_Exists(t *testing.T) {
 
 	if _, err := os.Stat(pDir); !os.IsNotExist(err) {
 		t.Error("project dir should be removed")
+	}
+}
+
+func TestLoadProjectRaw_NoProjectConfig(t *testing.T) {
+	// When inside a git repo but no project config exists, should return nil, nil.
+	dir := t.TempDir()
+	setTestHome(t, dir)
+
+	m, err := LoadProjectRaw()
+	if err != nil {
+		t.Fatalf("LoadProjectRaw: %v", err)
+	}
+	// Either nil (no project config dir) or nil (file doesn't exist) is acceptable.
+	if m != nil {
+		t.Errorf("expected nil map when no project config, got %v", m)
+	}
+}
+
+func TestSaveProjectField_AndLoadBack(t *testing.T) {
+	// This test only works when run inside a git repo (which this project is).
+	root := detectRepoRoot()
+	if root == "" {
+		t.Skip("not inside a git repo, skipping SaveProjectField test")
+	}
+
+	dir := t.TempDir()
+	setTestHome(t, dir)
+
+	// Save a field.
+	if err := SaveProjectField("AI_MODEL", "test-model-xyz"); err != nil {
+		t.Fatalf("SaveProjectField: %v", err)
+	}
+
+	// Verify the project config directory was created.
+	projectDir, err := ProjectConfigDir()
+	if err != nil {
+		t.Fatalf("ProjectConfigDir: %v", err)
+	}
+	if projectDir == "" {
+		t.Fatal("ProjectConfigDir returned empty string")
+	}
+
+	// Load it back.
+	m, err := LoadProjectRaw()
+	if err != nil {
+		t.Fatalf("LoadProjectRaw: %v", err)
+	}
+	if m == nil {
+		t.Fatal("LoadProjectRaw returned nil after SaveProjectField")
+	}
+	if m["AI_MODEL"] != "test-model-xyz" {
+		t.Errorf("AI_MODEL: got %q, want %q", m["AI_MODEL"], "test-model-xyz")
+	}
+
+	// Save another field — should preserve the first.
+	if err := SaveProjectField("AI_PROVIDER", "test-provider"); err != nil {
+		t.Fatalf("SaveProjectField second key: %v", err)
+	}
+	m, err = LoadProjectRaw()
+	if err != nil {
+		t.Fatalf("LoadProjectRaw after second save: %v", err)
+	}
+	if m["AI_MODEL"] != "test-model-xyz" {
+		t.Errorf("AI_MODEL should be preserved: got %q", m["AI_MODEL"])
+	}
+	if m["AI_PROVIDER"] != "test-provider" {
+		t.Errorf("AI_PROVIDER: got %q, want %q", m["AI_PROVIDER"], "test-provider")
+	}
+
+	// Verify repo-path metadata file exists.
+	repoPathFile := filepath.Join(projectDir, "repo-path")
+	b, err := os.ReadFile(repoPathFile)
+	if err != nil {
+		t.Fatalf("read repo-path: %v", err)
+	}
+	if strings.TrimSpace(string(b)) == "" {
+		t.Error("repo-path file should not be empty")
+	}
+
+	// Clean up: remove the project config.
+	id := ProjectID(root)
+	if err := RemoveProject(id); err != nil {
+		t.Fatalf("RemoveProject cleanup: %v", err)
 	}
 }
 

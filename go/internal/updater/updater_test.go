@@ -438,6 +438,176 @@ func TestBinaryNameForOS(t *testing.T) {
 	}
 }
 
+// ─── ReplaceCurrentBinary (happy path with mock HTTP server) ─────────────────
+
+func TestReplaceCurrentBinary_TarGz(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses Unix binary replacement")
+	}
+
+	// Build a real tar.gz archive containing the expected binary name.
+	binName := binaryNameForOS()
+	archiveData := buildTarGz(t, binName, "updated-binary-content")
+
+	// Serve the archive via httptest.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Write(archiveData) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	// Create a fake "current executable" so ReplaceCurrentBinary can replace it.
+	dir := t.TempDir()
+	fakeExe := filepath.Join(dir, "ai-review")
+	if err := os.WriteFile(fakeExe, []byte("old"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Patch os.Executable by creating a symlink and using that path isn't
+	// feasible, but ReplaceCurrentBinary calls os.Executable() directly.
+	// Instead, we create a thin wrapper that replaces the binary at a known path.
+	// We'll test the core logic by calling the internal pieces that
+	// ReplaceCurrentBinary orchestrates — download, extract, replace.
+	//
+	// Actually we CAN test ReplaceCurrentBinary end-to-end by building a
+	// temporary test binary and running it. But a simpler approach: create a
+	// small Go program, compile it to a temp dir, then point the test at it.
+	//
+	// Simplest workable approach: compile a trivial binary, run
+	// ReplaceCurrentBinary pointing at our httptest server. os.Executable()
+	// will return the test binary itself, which is fine — we just need the
+	// function to succeed.
+
+	// The download URL must NOT end in ".zip" to hit the tar.gz path.
+	downloadURL := srv.URL + "/archive.tar.gz"
+
+	err := ReplaceCurrentBinary(downloadURL)
+	// This will try to replace the test binary itself. It may or may not
+	// succeed depending on OS protections, but it exercises all the code paths.
+	// On macOS/Linux it should succeed.
+	if err != nil {
+		// If it fails, it should be at the replace step, not earlier.
+		// Accept the error only if it's about replacing the binary (permission).
+		if !strings.Contains(err.Error(), "replace binary") &&
+			!strings.Contains(err.Error(), "text file busy") &&
+			!strings.Contains(err.Error(), "permission denied") &&
+			!strings.Contains(err.Error(), "operation not permitted") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+}
+
+func TestReplaceCurrentBinary_Zip(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses Unix binary replacement")
+	}
+
+	binName := binaryNameForOS()
+	archiveData := buildZip(t, binName, "updated-zip-binary")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		w.Write(archiveData) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	// URL must end in ".zip" to hit the zip extraction path.
+	downloadURL := srv.URL + "/archive.zip"
+
+	err := ReplaceCurrentBinary(downloadURL)
+	if err != nil {
+		if !strings.Contains(err.Error(), "replace binary") &&
+			!strings.Contains(err.Error(), "text file busy") &&
+			!strings.Contains(err.Error(), "permission denied") &&
+			!strings.Contains(err.Error(), "operation not permitted") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+}
+
+func TestReplaceCurrentBinary_BadArchiveContent(t *testing.T) {
+	// Serve something that isn't a valid tar.gz.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not-a-real-archive")) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	err := ReplaceCurrentBinary(srv.URL + "/archive.tar.gz")
+	if err == nil {
+		t.Fatal("expected error for invalid archive content")
+	}
+}
+
+func TestReplaceCurrentBinary_BinaryNotInArchive(t *testing.T) {
+	// Build a tar.gz that does NOT contain the expected binary name.
+	archiveData := buildTarGz(t, "wrong-name", "some-content")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(archiveData) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	err := ReplaceCurrentBinary(srv.URL + "/archive.tar.gz")
+	if err == nil {
+		t.Fatal("expected error when binary not found in archive")
+	}
+	if !strings.Contains(err.Error(), "not found in archive") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestReplaceCurrentBinary_BadZipContent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not-a-zip")) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	err := ReplaceCurrentBinary(srv.URL + "/archive.zip")
+	if err == nil {
+		t.Fatal("expected error for invalid zip content")
+	}
+}
+
+// ─── replaceUnixBinary edge cases ────────────────────────────────────────────
+
+func TestReplaceUnixBinary_BadSourcePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix-only")
+	}
+
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "ai-review")
+	if err := os.WriteFile(exePath, []byte("old"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := replaceUnixBinary(exePath, "/nonexistent/path/binary")
+	if err == nil {
+		t.Fatal("expected error for nonexistent source")
+	}
+}
+
+func TestReplaceUnixBinary_BadExeDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix-only")
+	}
+
+	dir := t.TempDir()
+	newBinPath := filepath.Join(dir, "new-binary")
+	if err := os.WriteFile(newBinPath, []byte("new"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// exePath in a nonexistent directory — CreateTemp should fail.
+	err := replaceUnixBinary("/nonexistent/dir/ai-review", newBinPath)
+	if err == nil {
+		t.Fatal("expected error for nonexistent exe directory")
+	}
+	if !strings.Contains(err.Error(), "create staging file") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 // ─── replaceWindowsBinary ────────────────────────────────────────────────────
 
 func TestReplaceWindowsBinary_WritesBatchFile(t *testing.T) {

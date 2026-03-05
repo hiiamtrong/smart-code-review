@@ -175,3 +175,98 @@ func TestPrintHeader(t *testing.T) {
 		t.Errorf("PrintHeader missing version; got: %q", out)
 	}
 }
+
+func TestPrintStageHeader(t *testing.T) {
+	out := captureAll(func() { PrintStageHeader("Lint") })
+	if !strings.Contains(out, "Lint") {
+		t.Errorf("PrintStageHeader missing stage name; got: %q", out)
+	}
+	if !strings.Contains(out, "━") {
+		t.Errorf("PrintStageHeader missing divider; got: %q", out)
+	}
+}
+
+func TestPrintIssueWithSourcePrefix(t *testing.T) {
+	out := captureAll(func() {
+		PrintIssueWithSource("golint", "ERROR", "main.go", 10, "exported func missing doc")
+	})
+	if !strings.Contains(out, "golint:") {
+		t.Errorf("missing source prefix; got: %q", out)
+	}
+	if !strings.Contains(out, "exported func missing doc") {
+		t.Errorf("missing message; got: %q", out)
+	}
+	if !strings.Contains(out, "main.go:10") {
+		t.Errorf("missing file:line; got: %q", out)
+	}
+}
+
+func TestPrintIssueWithSourceNoSource(t *testing.T) {
+	out := captureAll(func() {
+		PrintIssueWithSource("", "WARNING", "util.go", 5, "shadow variable")
+	})
+	if strings.Contains(out, ": : ") {
+		t.Errorf("empty source should not produce double colon; got: %q", out)
+	}
+	if !strings.Contains(out, "[WARN]") {
+		t.Errorf("WARNING missing prefix; got: %q", out)
+	}
+	if !strings.Contains(out, "shadow variable") {
+		t.Errorf("missing message; got: %q", out)
+	}
+	if !strings.Contains(out, "util.go:5") {
+		t.Errorf("missing file:line; got: %q", out)
+	}
+}
+
+func TestPrintIssueWithSourceInfo(t *testing.T) {
+	out := captureAll(func() {
+		PrintIssueWithSource("mycheck", "INFO", "foo.go", 99, "consider refactoring")
+	})
+	if !strings.Contains(out, "[INFO]") {
+		t.Errorf("INFO missing prefix; got: %q", out)
+	}
+	if !strings.Contains(out, "mycheck:") {
+		t.Errorf("missing source; got: %q", out)
+	}
+}
+
+func TestPrintStageSummary(t *testing.T) {
+	out := captureAll(func() {
+		PrintStageSummary(StageSummary{Name: "Lint", Errors: 2, Warnings: 3, Infos: 1})
+	})
+	if !strings.Contains(out, "Lint") {
+		t.Errorf("PrintStageSummary missing stage name; got: %q", out)
+	}
+	if !strings.Contains(out, "2 errors") {
+		t.Errorf("PrintStageSummary missing errors; got: %q", out)
+	}
+	if !strings.Contains(out, "3 warnings") {
+		t.Errorf("PrintStageSummary missing warnings; got: %q", out)
+	}
+	if !strings.Contains(out, "1 info") {
+		t.Errorf("PrintStageSummary missing info; got: %q", out)
+	}
+}
+
+func TestPrintStageSummaries(t *testing.T) {
+	stages := []StageSummary{
+		{Name: "Lint", Errors: 1, Warnings: 2, Infos: 0},
+		{Name: "Security", Errors: 0, Warnings: 1, Infos: 3},
+	}
+	out := captureAll(func() {
+		PrintStageSummaries(stages, 1, 3, 3)
+	})
+	if !strings.Contains(out, "Lint:") {
+		t.Errorf("PrintStageSummaries missing Lint stage; got: %q", out)
+	}
+	if !strings.Contains(out, "Security:") {
+		t.Errorf("PrintStageSummaries missing Security stage; got: %q", out)
+	}
+	if !strings.Contains(out, "1 errors, 3 warnings, 3 info") {
+		t.Errorf("PrintStageSummaries missing total summary; got: %q", out)
+	}
+	if !strings.Contains(out, "Review Summary") {
+		t.Errorf("PrintStageSummaries missing Review Summary label; got: %q", out)
+	}
+}

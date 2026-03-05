@@ -240,6 +240,61 @@ func TestLoadMergedWithSources_Labels(t *testing.T) {
 	}
 }
 
+func TestAllConfigKeys(t *testing.T) {
+	keys := AllConfigKeys()
+	if len(keys) == 0 {
+		t.Fatal("AllConfigKeys returned empty slice")
+	}
+	// Should match the length of DefaultsAsMap.
+	defaults := DefaultsAsMap()
+	if len(keys) != len(defaults) {
+		t.Errorf("AllConfigKeys length %d != DefaultsAsMap length %d", len(keys), len(defaults))
+	}
+	// Every key should exist in DefaultsAsMap.
+	for _, k := range keys {
+		if _, ok := defaults[k]; !ok {
+			t.Errorf("AllConfigKeys contains %q which is not in DefaultsAsMap", k)
+		}
+	}
+	// Verify a few known keys are present.
+	found := make(map[string]bool)
+	for _, k := range keys {
+		found[k] = true
+	}
+	for _, want := range []string{"AI_MODEL", "AI_PROVIDER", "ENABLE_AI_REVIEW", "SEMGREP_RULES"} {
+		if !found[want] {
+			t.Errorf("AllConfigKeys missing expected key %q", want)
+		}
+	}
+}
+
+func TestLoadWithRepoOverrides(t *testing.T) {
+	dir := t.TempDir()
+	setTestHome(t, dir)
+
+	// No config file, no env — should return defaults.
+	cfg, err := LoadWithRepoOverrides()
+	if err != nil {
+		t.Fatalf("LoadWithRepoOverrides: %v", err)
+	}
+	if cfg.AIModel != "gemini-2.0-flash" {
+		t.Errorf("expected default AI_MODEL, got %q", cfg.AIModel)
+	}
+	if !cfg.EnableAIReview {
+		t.Error("expected default EnableAIReview=true")
+	}
+
+	// With env override.
+	t.Setenv("AI_MODEL", "override-model")
+	cfg, err = LoadWithRepoOverrides()
+	if err != nil {
+		t.Fatalf("LoadWithRepoOverrides with env: %v", err)
+	}
+	if cfg.AIModel != "override-model" {
+		t.Errorf("expected env override, got %q", cfg.AIModel)
+	}
+}
+
 func TestLoadMerged_BooleanOverride(t *testing.T) {
 	// This tests the critical boolean merge case: project sets
 	// ENABLE_AI_REVIEW=false should override global's default true.
