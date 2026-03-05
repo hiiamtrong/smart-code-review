@@ -11,6 +11,7 @@ description: Testing strategy and results for Semgrep integration
 | Package | Coverage | Notes |
 |---------|----------|-------|
 | `internal/semgrep` | **97.9%** | Uncovered: Windows `semgrep.exe` name branch (untestable on macOS) |
+| `internal/installer` | **92.9%** | Uncovered: write-after-open errors (unreachable without fs mocks) |
 | `internal/config` | All Semgrep fields covered | `GetField`, `SetField`, `DefaultsAsMap`, env vars |
 | `internal/cmd` (setup) | All setup wizard tests updated | Added Semgrep prompt to all 5 integration tests |
 
@@ -56,9 +57,37 @@ description: Testing strategy and results for Semgrep integration
 - [x] `TestRunSetup_ProjectFlag` — added Semgrep prompt (n)
 - [x] `TestRunSetup_AbortAtSummary` — added Semgrep prompt (n)
 
+## Unit Tests: `internal/installer/` (pre-commit.com compatibility)
+
+### DetectPreCommitFramework (100%)
+- [x] `TestDetectPreCommitFramework_Found` — `.pre-commit-config.yaml` exists
+- [x] `TestDetectPreCommitFramework_NotFound` — file absent
+
+### InjectPreCommitConfig (92.9%)
+- [x] `TestInjectPreCommitConfig_Injects` — appends `repo: local` block, preserves original
+- [x] `TestInjectPreCommitConfig_Idempotent` — second call is no-op
+- [x] `TestInjectPreCommitConfig_FileNotFound` — error when no config file
+- [x] `TestInjectPreCommitConfig_AppendError` — read-only file returns error
+
+### RemovePreCommitConfig (92.3%)
+- [x] `TestRemovePreCommitConfig_Removes` — strips injected block cleanly
+- [x] `TestRemovePreCommitConfig_NotPresent` — no-op when not installed
+- [x] `TestRemovePreCommitConfig_NoFile` — no-op when file absent
+- [x] `TestRemovePreCommitConfig_ReadError` — unreadable file returns error
+
+### IsPreCommitConfigInstalled (100%)
+- [x] `TestIsPreCommitConfigInstalled_True` — after injection
+- [x] `TestIsPreCommitConfigInstalled_False` — no config file
+
+### Error paths
+- [x] `TestWritePreCommitHook_MkdirAllError` — read-only parent dir
+- [x] `TestWritePreCommitHook_AppendToReadonlyHook` — read-only foreign hook
+- [x] `TestRemovePreCommitHook_ReadError` — unreadable hook file
+
 ## Test Files
 
 - [`go/internal/semgrep/semgrep_test.go`](go/internal/semgrep/semgrep_test.go)
+- [`go/internal/installer/installer_test.go`](go/internal/installer/installer_test.go)
 - [`go/internal/config/config_test.go`](go/internal/config/config_test.go)
 - [`go/internal/config/merge_test.go`](go/internal/config/merge_test.go)
 - [`go/internal/cmd/setup_test.go`](go/internal/cmd/setup_test.go)
@@ -75,3 +104,5 @@ go test ./... -count=1  # full suite
 
 - Windows-specific `FindSemgrep` test (requires CI with Windows runner)
 - End-to-end `hookRunSemgrep` with real Semgrep binary (requires Semgrep installed)
+- Integration test for `runInstall`/`runUninstall` with pre-commit framework (requires git repo mock)
+- Write-after-open error paths in installer (requires filesystem mocking)

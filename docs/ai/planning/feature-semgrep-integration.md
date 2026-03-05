@@ -12,6 +12,8 @@ description: Task breakdown for implementing Semgrep integration
 - [x] Milestone 2: Hook integration (runhook.go wiring)
 - [x] Milestone 3: Config & setup wizard
 - [x] Milestone 4: Tests & documentation
+- [x] Milestone 5: Consistent output format & per-stage summaries
+- [x] Milestone 6: pre-commit.com framework compatibility
 
 ## Task Breakdown
 
@@ -40,6 +42,24 @@ description: Task breakdown for implementing Semgrep integration
 - [x] Task 4.2: Unit tests for JSON parsing with fixture data
 - [x] Task 4.3: Unit tests for severity mapping
 - [x] Task 4.4: Unit tests for empty file list, absolute path conversion, invalid JSON
+
+### Phase 5: Consistent Output & Summaries
+
+- [x] Task 5.1: Reorder pipeline — Semgrep first (fail-fast)
+- [x] Task 5.2: Add `PrintStageHeader`, `PrintIssueWithSource` to display package
+- [x] Task 5.3: Add `StageSummary` type and `PrintStageSummaries` for final summary
+- [x] Task 5.4: Add per-stage inline summary via `PrintStageSummary` in `addCounts`
+- [x] Task 5.5: Rename "AI Code Review" to "AI Analysis" for consistency
+
+### Phase 6: pre-commit.com Framework Compatibility
+
+- [x] Task 6.1: Add `DetectPreCommitFramework()` — check for `.pre-commit-config.yaml`
+- [x] Task 6.2: Add `InjectPreCommitConfig()` — append `repo: local` block
+- [x] Task 6.3: Add `RemovePreCommitConfig()` — clean removal
+- [x] Task 6.4: Route `ai-review install` through framework path when detected
+- [x] Task 6.5: Update `ai-review uninstall` to clean both paths
+- [x] Task 6.6: Tests for all new installer functions (10 tests)
+- [x] Task 6.7: E2E manual test — install/uninstall with `.pre-commit-config.yaml`
 
 ## Dependencies
 

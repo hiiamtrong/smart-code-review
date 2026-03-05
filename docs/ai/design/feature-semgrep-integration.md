@@ -11,13 +11,13 @@ description: Architecture and component design for Semgrep integration
 ```mermaid
 graph TD
     Hook[pre-commit hook] --> RunHook[runHook]
-    RunHook --> SQ[hookRunSonarQube<br/>fetch-only]
-    RunHook --> SG[hookRunSemgrep<br/>NEW]
-    RunHook --> AI[hookRunAIReview]
+    RunHook --> SG[hookRunSemgrep<br/>Stage 1]
+    RunHook --> SQ[hookRunSonarQube<br/>Stage 2]
+    RunHook --> AI[hookRunAIReview<br/>Stage 3]
 
     SG --> FindBin[FindSemgrep<br/>binary discovery]
-    SG --> RunScan[RunScan<br/>semgrep --json]
-    SG --> Parse[ParseOutput<br/>JSON → Diagnostics]
+    SG --> RunScan[ScanFiles<br/>semgrep --json]
+    SG --> Parse[parseOutput<br/>JSON → Diagnostics]
 
     RunScan -->|staged files| Semgrep[semgrep CLI]
     Semgrep -->|JSON output| Parse
@@ -25,13 +25,13 @@ graph TD
 
     SQ --> Diag
     AI --> Diag
-    Diag --> Display[display.PrintIssue]
+    Diag --> Display[display.PrintIssueWithSource]
 ```
 
-**Execution order in pre-commit hook:**
-1. SonarQube (fetch-only) — if enabled
-2. **Semgrep (local scan)** — if enabled (NEW)
-3. AI Gateway review
+**Execution order in pre-commit hook (fail-fast, fastest first):**
+1. **Semgrep (local scan)** — if enabled, fastest stage
+2. SonarQube (server-based) — if enabled and not blocked
+3. AI Gateway review — if not blocked
 
 ## Data Models
 
@@ -95,8 +95,22 @@ func ScanFiles(bin string, cfg SemgrepConfig, files []string) ([]gateway.Diagnos
 | File | Change |
 |------|--------|
 | `config/config.go` | Add `EnableSemgrep`, `SemgrepRules` fields |
-| `cmd/runhook.go` | Add `hookRunSemgrep()` call between SonarQube and AI review |
+| `cmd/runhook.go` | Add `hookRunSemgrep()` as Stage 1 (before SonarQube and AI) |
 | `cmd/setup.go` | Add Semgrep configuration step in setup wizard |
+| `cmd/install.go` | Auto-detect pre-commit.com framework; inject `repo: local` hook |
+| `installer/installer.go` | Add `InjectPreCommitConfig`, `RemovePreCommitConfig`, `DetectPreCommitFramework` |
+| `display/display.go` | Add `PrintIssueWithSource`, `PrintStageHeader`, `PrintStageSummary`, `StageSummary` |
+
+## pre-commit.com Framework Compatibility
+
+When the user runs `ai-review install` in a repo that has `.pre-commit-config.yaml`:
+
+1. Detect the framework via `DetectPreCommitFramework()` — checks for `.pre-commit-config.yaml`
+2. Instead of writing to `.git/hooks/pre-commit`, inject a `repo: local` block into `.pre-commit-config.yaml`
+3. The local hook uses `language: system`, `always_run: true`, `pass_filenames: false`
+4. `ai-review uninstall` removes the block cleanly; also checks the hook file for dual-method cleanup
+
+This allows ai-review to coexist with pre-commit.com managed hooks (e.g. `trailing-whitespace`, `end-of-file-fixer`).
 
 ## Design Decisions
 
