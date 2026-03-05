@@ -1,6 +1,7 @@
 package semgrep
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -31,7 +32,11 @@ func TestFindSemgrep_NotFound(t *testing.T) {
 
 func TestFindSemgrep_FoundInPath(t *testing.T) {
 	dir := t.TempDir()
-	fakeBin := filepath.Join(dir, "semgrep")
+	name := "semgrep"
+	if runtime.GOOS == "windows" {
+		name = "semgrep.exe"
+	}
+	fakeBin := filepath.Join(dir, name)
 	if err := os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -332,12 +337,20 @@ func TestParseOutput_ValidResults(t *testing.T) {
 }
 
 func TestParseOutput_AbsolutePathConversion(t *testing.T) {
-	repoRoot := "/home/user/project"
-	jsonData := `{
+	// Use OS-native absolute paths so filepath.IsAbs works on all platforms.
+	var repoRoot, absFile string
+	if runtime.GOOS == "windows" {
+		repoRoot = `C:\Users\user\project`
+		absFile = `C:\Users\user\project\src\main.go`
+	} else {
+		repoRoot = "/home/user/project"
+		absFile = "/home/user/project/src/main.go"
+	}
+	jsonData := fmt.Sprintf(`{
 		"results": [
 			{
 				"check_id": "test.rule",
-				"path": "/home/user/project/src/main.go",
+				"path": %q,
 				"start": {"line": 1, "col": 1},
 				"end": {"line": 1, "col": 10},
 				"extra": {
@@ -347,7 +360,7 @@ func TestParseOutput_AbsolutePathConversion(t *testing.T) {
 			}
 		],
 		"errors": []
-	}`
+	}`, absFile)
 
 	diags, err := parseOutput([]byte(jsonData), repoRoot)
 	if err != nil {
@@ -357,8 +370,9 @@ func TestParseOutput_AbsolutePathConversion(t *testing.T) {
 	if len(diags) != 1 {
 		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
 	}
-	if diags[0].Location.Path != "src/main.go" {
-		t.Errorf("expected relative path 'src/main.go', got %q", diags[0].Location.Path)
+	want := filepath.Join("src", "main.go")
+	if diags[0].Location.Path != want {
+		t.Errorf("expected relative path %q, got %q", want, diags[0].Location.Path)
 	}
 }
 
