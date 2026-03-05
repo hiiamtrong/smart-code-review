@@ -47,6 +47,17 @@ echo ""
 echo "────────────────────────────────────────"
 echo ""
 
+# Run Install Script tests
+if run_test_suite "Install Script Tests" "$SCRIPT_DIR/test-install.sh"; then
+  TOTAL_PASSED=$((TOTAL_PASSED + 1))
+else
+  TOTAL_FAILED=$((TOTAL_FAILED + 1))
+fi
+
+echo ""
+echo "────────────────────────────────────────"
+echo ""
+
 # Run Hook tests
 if run_test_suite "Hook Tests" "$SCRIPT_DIR/test-hook.sh"; then
   TOTAL_PASSED=$((TOTAL_PASSED + 1))
