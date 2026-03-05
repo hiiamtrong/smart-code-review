@@ -168,6 +168,12 @@ func replaceUnixBinary(exePath, newBinaryPath string) error {
 	}
 	dst.Close()
 
+	// os.CreateTemp creates 0600; OpenFile mode only applies on creation.
+	// Explicitly set the executable bits before renaming.
+	if err := os.Chmod(stagingPath, 0755); err != nil {
+		return fmt.Errorf("chmod staging binary: %w", err)
+	}
+
 	// Atomic rename.
 	if err := os.Rename(stagingPath, exePath); err != nil {
 		return fmt.Errorf("replace binary: %w", err)

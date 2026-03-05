@@ -205,6 +205,16 @@ func TestReplaceUnixBinary(t *testing.T) {
 	if string(data) != "new-binary" {
 		t.Errorf("content: got %q, want %q", data, "new-binary")
 	}
+
+	// Verify the replaced binary is executable (regression: CreateTemp
+	// creates 0600 files; without explicit chmod the binary loses +x).
+	info, err := os.Stat(exePath)
+	if err != nil {
+		t.Fatalf("stat replaced binary: %v", err)
+	}
+	if info.Mode().Perm()&0111 == 0 {
+		t.Errorf("replaced binary not executable: mode %o", info.Mode().Perm())
+	}
 }
 
 // legacy helper kept for existing tests below — delegates to FetchLatest.
