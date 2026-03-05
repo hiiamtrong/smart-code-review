@@ -73,6 +73,7 @@ func ScanFiles(bin string, cfg SemgrepConfig, files []string, repoRoot string) (
 	}
 	args = append(args, files...)
 
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.Command(bin, args...) //nolint:gosec
 	cmd.Dir = repoRoot
 	cmd.Stderr = os.Stderr

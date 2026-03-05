@@ -9,6 +9,13 @@ import (
 	"github.com/hiiamtrong/smart-code-review/internal/git"
 )
 
+const (
+	testNotSet      = "(not set)"
+	testConfigDir   = ".config"
+	testAppName     = "ai-review"
+	testModelClaude3 = "claude-3"
+)
+
 // ─── formatConfigValue ───────────────────────────────────────────────────────
 
 func TestFormatConfigValue_Sensitive(t *testing.T) {
@@ -27,8 +34,8 @@ func TestFormatConfigValue_SensitiveSonarToken(t *testing.T) {
 
 func TestFormatConfigValue_SensitiveEmpty(t *testing.T) {
 	got := formatConfigValue("AI_GATEWAY_API_KEY", "")
-	if got != "(not set)" {
-		t.Errorf("formatConfigValue(AI_GATEWAY_API_KEY, \"\") = %q, want %q", got, "(not set)")
+	if got != testNotSet {
+		t.Errorf("formatConfigValue(AI_GATEWAY_API_KEY, \"\") = %q, want %q", got, testNotSet)
 	}
 }
 
@@ -41,8 +48,8 @@ func TestFormatConfigValue_NonSensitive(t *testing.T) {
 
 func TestFormatConfigValue_NonSensitiveEmpty(t *testing.T) {
 	got := formatConfigValue("AI_MODEL", "")
-	if got != "(not set)" {
-		t.Errorf("formatConfigValue(AI_MODEL, \"\") = %q, want %q", got, "(not set)")
+	if got != testNotSet {
+		t.Errorf("formatConfigValue(AI_MODEL, \"\") = %q, want %q", got, testNotSet)
 	}
 }
 
@@ -51,7 +58,7 @@ func TestFormatConfigValue_NonSensitiveEmpty(t *testing.T) {
 func TestHookFinalize_NoIssues(t *testing.T) {
 	result := &gateway.ReviewResult{}
 	counts := hookCounts{}
-	err := hookFinalize(result, counts)
+	err := hookFinalize(result, counts, nil)
 	if err != nil {
 		t.Errorf("hookFinalize with no issues should return nil, got: %v", err)
 	}
@@ -60,7 +67,7 @@ func TestHookFinalize_NoIssues(t *testing.T) {
 func TestHookFinalize_WithErrors(t *testing.T) {
 	result := &gateway.ReviewResult{}
 	counts := hookCounts{errCount: 2}
-	err := hookFinalize(result, counts)
+	err := hookFinalize(result, counts, nil)
 	if err == nil {
 		t.Error("hookFinalize with errors should return errBlocked")
 	}
@@ -72,7 +79,7 @@ func TestHookFinalize_WithErrors(t *testing.T) {
 func TestHookFinalize_WarningsOnly(t *testing.T) {
 	result := &gateway.ReviewResult{}
 	counts := hookCounts{warnCount: 3}
-	err := hookFinalize(result, counts)
+	err := hookFinalize(result, counts, nil)
 	if err != nil {
 		t.Errorf("hookFinalize with warnings only should return nil, got: %v", err)
 	}
@@ -81,7 +88,7 @@ func TestHookFinalize_WarningsOnly(t *testing.T) {
 func TestHookFinalize_InfoOnly(t *testing.T) {
 	result := &gateway.ReviewResult{}
 	counts := hookCounts{infoCount: 5}
-	err := hookFinalize(result, counts)
+	err := hookFinalize(result, counts, nil)
 	if err != nil {
 		t.Errorf("hookFinalize with info only should return nil, got: %v", err)
 	}
@@ -90,7 +97,7 @@ func TestHookFinalize_InfoOnly(t *testing.T) {
 func TestHookFinalize_WithOverview(t *testing.T) {
 	result := &gateway.ReviewResult{Overview: "This is a review overview."}
 	counts := hookCounts{warnCount: 1}
-	err := hookFinalize(result, counts)
+	err := hookFinalize(result, counts, nil)
 	if err != nil {
 		t.Errorf("hookFinalize with overview should return nil, got: %v", err)
 	}
@@ -98,7 +105,7 @@ func TestHookFinalize_WithOverview(t *testing.T) {
 
 func TestHookFinalize_NilResult(t *testing.T) {
 	counts := hookCounts{}
-	err := hookFinalize(nil, counts)
+	err := hookFinalize(nil, counts, nil)
 	if err != nil {
 		t.Errorf("hookFinalize with nil result should return nil, got: %v", err)
 	}
@@ -111,7 +118,7 @@ func TestRunConfigShow_WithConfig(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +145,7 @@ func TestRunConfigGet_UnknownKey(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -152,7 +159,7 @@ func TestRunConfigGet_KnownKey(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -166,7 +173,7 @@ func TestRunConfigGet_GlobalFlag(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -185,7 +192,7 @@ func TestRunConfigGet_GlobalFlag_UnknownKey(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -205,7 +212,7 @@ func TestRunConfigSet_GlobalFlag(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -213,7 +220,7 @@ func TestRunConfigSet_GlobalFlag(t *testing.T) {
 	configGlobalFlag = true
 	defer func() { configGlobalFlag = origGlobal }()
 
-	err := runConfigSet("AI_MODEL", "claude-3")
+	err := runConfigSet("AI_MODEL", testModelClaude3)
 	if err != nil {
 		t.Errorf("runConfigSet --global should succeed, got: %v", err)
 	}
@@ -233,7 +240,7 @@ func TestRunConfigSet_AutoDetectGlobal(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -248,7 +255,7 @@ func TestRunConfigSet_AutoDetectGlobal(t *testing.T) {
 	}()
 
 	// No project config exists, so this should fall back to global.
-	err := runConfigSet("AI_MODEL", "claude-3")
+	err := runConfigSet("AI_MODEL", testModelClaude3)
 	if err != nil {
 		t.Errorf("runConfigSet auto-detect global should succeed, got: %v", err)
 	}
@@ -260,7 +267,7 @@ func TestRunConfigListProjects_Empty(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 
 	err := runConfigListProjects()
@@ -290,7 +297,7 @@ func TestRunConfigRemoveProject_WithID(t *testing.T) {
 	setTestHome(t, tmp)
 
 	// Create projects dir with a project
-	projectsDir := filepath.Join(tmp, ".config", "ai-review", "projects")
+	projectsDir := filepath.Join(tmp, testConfigDir, testAppName, "projects")
 	projectDir := filepath.Join(projectsDir, "test-project")
 	os.MkdirAll(projectDir, 0o755)
 	os.WriteFile(filepath.Join(projectDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
@@ -308,7 +315,7 @@ func TestRunConfig_ShowSubcommand(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -323,7 +330,7 @@ func TestRunConfig_GetSubcommand(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -337,7 +344,7 @@ func TestRunConfig_SetSubcommand(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -345,7 +352,7 @@ func TestRunConfig_SetSubcommand(t *testing.T) {
 	configGlobalFlag = true
 	defer func() { configGlobalFlag = origGlobal }()
 
-	err := runConfig(nil, []string{"set", "AI_MODEL", "claude-3"})
+	err := runConfig(nil, []string{"set", "AI_MODEL", testModelClaude3})
 	if err != nil {
 		t.Errorf("runConfig set should succeed, got: %v", err)
 	}
@@ -355,7 +362,7 @@ func TestRunConfig_ListProjectsSubcommand(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 
 	err := runConfig(nil, []string{"list-projects"})
@@ -382,7 +389,7 @@ func TestRunConfig_RemoveProjectWithID(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	projectsDir := filepath.Join(tmp, ".config", "ai-review", "projects")
+	projectsDir := filepath.Join(tmp, testConfigDir, testAppName, "projects")
 	projectDir := filepath.Join(projectsDir, "myproj")
 	os.MkdirAll(projectDir, 0o755)
 	os.WriteFile(filepath.Join(projectDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
@@ -414,7 +421,7 @@ func TestRunStatus_WithConfig(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	configContent := `AI_GATEWAY_URL="http://localhost:8080"
 AI_GATEWAY_API_KEY="test-key"
@@ -431,7 +438,7 @@ func TestRunStatus_WithIncompleteCredentials(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	configContent := `AI_GATEWAY_URL="http://localhost:8080"
 AI_GATEWAY_API_KEY=""
@@ -459,7 +466,7 @@ func TestRunHook_AIReviewDisabled(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	configContent := `AI_GATEWAY_URL="http://localhost:8080"
 AI_GATEWAY_API_KEY="test-key"
@@ -477,7 +484,7 @@ func TestRunHook_NoCredentials(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	configContent := `ENABLE_AI_REVIEW="true"
 AI_GATEWAY_URL=""
@@ -511,11 +518,11 @@ func TestSaveToGlobal_Success(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
-	err := saveToGlobal("AI_MODEL", "claude-3")
+	err := saveToGlobal("AI_MODEL", testModelClaude3)
 	if err != nil {
 		t.Errorf("saveToGlobal should succeed, got: %v", err)
 	}
@@ -525,7 +532,7 @@ func TestSaveToGlobal_InvalidKey(t *testing.T) {
 	tmp := t.TempDir()
 	setTestHome(t, tmp)
 
-	configDir := filepath.Join(tmp, ".config", "ai-review")
+	configDir := filepath.Join(tmp, testConfigDir, testAppName)
 	os.MkdirAll(configDir, 0o755)
 	os.WriteFile(filepath.Join(configDir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
@@ -554,7 +561,7 @@ func TestRunConfigSet_ProjectFlag_NoGitRepo(t *testing.T) {
 	}()
 
 	// Expect error because we're not in a git repo.
-	err := runConfigSet("AI_MODEL", "claude-3")
+	err := runConfigSet("AI_MODEL", testModelClaude3)
 	if err == nil {
 		t.Error("expected error for --project flag outside git repo")
 	}

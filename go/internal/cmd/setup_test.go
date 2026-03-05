@@ -11,46 +11,53 @@ import (
 	"github.com/hiiamtrong/smart-code-review/internal/config"
 )
 
+const (
+	testGatewayURL = "https://gateway.example.com"
+	testPromptLabel = "Enable?"
+	msgRunSetup    = "runSetup: %v"
+	msgLoadMerged  = "LoadMerged: %v"
+)
+
 // ─── promptBool ──────────────────────────────────────────────────────────────
 
 func TestPromptBool_DefaultTrue_EmptyInput(t *testing.T) {
 	r := bufio.NewReader(strings.NewReader("\n"))
-	if got := promptBool(r, "Enable?", true); !got {
+	if got := promptBool(r, testPromptLabel, true); !got {
 		t.Error("expected true for empty input with default=true")
 	}
 }
 
 func TestPromptBool_DefaultTrue_InputN(t *testing.T) {
 	r := bufio.NewReader(strings.NewReader("n\n"))
-	if got := promptBool(r, "Enable?", true); got {
+	if got := promptBool(r, testPromptLabel, true); got {
 		t.Error("expected false for input 'n'")
 	}
 }
 
 func TestPromptBool_DefaultFalse_EmptyInput(t *testing.T) {
 	r := bufio.NewReader(strings.NewReader("\n"))
-	if got := promptBool(r, "Enable?", false); got {
+	if got := promptBool(r, testPromptLabel, false); got {
 		t.Error("expected false for empty input with default=false")
 	}
 }
 
 func TestPromptBool_DefaultFalse_InputY(t *testing.T) {
 	r := bufio.NewReader(strings.NewReader("y\n"))
-	if got := promptBool(r, "Enable?", false); !got {
+	if got := promptBool(r, testPromptLabel, false); !got {
 		t.Error("expected true for input 'y'")
 	}
 }
 
 func TestPromptBool_DefaultFalse_InputYes(t *testing.T) {
 	r := bufio.NewReader(strings.NewReader("yes\n"))
-	if got := promptBool(r, "Enable?", false); !got {
+	if got := promptBool(r, testPromptLabel, false); !got {
 		t.Error("expected true for input 'yes'")
 	}
 }
 
 func TestPromptBool_CaseInsensitive(t *testing.T) {
 	r := bufio.NewReader(strings.NewReader("Y\n"))
-	if got := promptBool(r, "Enable?", false); !got {
+	if got := promptBool(r, testPromptLabel, false); !got {
 		t.Error("expected true for input 'Y'")
 	}
 }
@@ -182,7 +189,7 @@ func TestRunSetup_AIOnly(t *testing.T) {
 		"y",    // Enable AI Review
 		"n",    // Enable SonarQube
 		"n",    // Enable Semgrep
-		"https://gateway.example.com", // AI Gateway URL
+		testGatewayURL, // AI Gateway URL
 		"",                            // AI Model (accept default)
 		"",                            // AI Provider (accept default)
 		"y",                           // Save configuration
@@ -197,13 +204,13 @@ func TestRunSetup_AIOnly(t *testing.T) {
 
 	err := runSetup(nil, nil)
 	if err != nil {
-		t.Fatalf("runSetup: %v", err)
+		t.Fatalf(msgRunSetup, err)
 	}
 
 	// Verify config was saved
 	cfg, err := config.LoadMerged()
 	if err != nil {
-		t.Fatalf("LoadMerged: %v", err)
+		t.Fatalf(msgLoadMerged, err)
 	}
 	if !cfg.EnableAIReview {
 		t.Error("EnableAIReview should be true")
@@ -211,7 +218,7 @@ func TestRunSetup_AIOnly(t *testing.T) {
 	if cfg.EnableSonarQube {
 		t.Error("EnableSonarQube should be false")
 	}
-	if cfg.AIGatewayURL != "https://gateway.example.com" {
+	if cfg.AIGatewayURL != testGatewayURL {
 		t.Errorf("AIGatewayURL = %q", cfg.AIGatewayURL)
 	}
 	if cfg.AIGatewayAPIKey != "test-api-key" {
@@ -245,7 +252,7 @@ func TestRunSetup_WithSonarQube(t *testing.T) {
 		"y",    // Enable AI Review
 		"y",    // Enable SonarQube
 		"n",    // Enable Semgrep
-		"https://gateway.example.com", // AI Gateway URL
+		testGatewayURL, // AI Gateway URL
 		"custom-model",                // AI Model
 		"openai",                      // AI Provider
 		"https://sonar.example.com",   // SonarQube Host URL
@@ -262,12 +269,12 @@ func TestRunSetup_WithSonarQube(t *testing.T) {
 
 	err := runSetup(nil, nil)
 	if err != nil {
-		t.Fatalf("runSetup: %v", err)
+		t.Fatalf(msgRunSetup, err)
 	}
 
 	cfg, err := config.LoadMerged()
 	if err != nil {
-		t.Fatalf("LoadMerged: %v", err)
+		t.Fatalf(msgLoadMerged, err)
 	}
 	if !cfg.EnableAIReview {
 		t.Error("EnableAIReview should be true")
@@ -322,12 +329,12 @@ func TestRunSetup_BothDisabled(t *testing.T) {
 
 	err := runSetup(nil, nil)
 	if err != nil {
-		t.Fatalf("runSetup: %v", err)
+		t.Fatalf(msgRunSetup, err)
 	}
 
 	cfg, err := config.LoadMerged()
 	if err != nil {
-		t.Fatalf("LoadMerged: %v", err)
+		t.Fatalf(msgLoadMerged, err)
 	}
 	if cfg.EnableAIReview {
 		t.Error("EnableAIReview should be false")
@@ -415,7 +422,7 @@ func TestRunSetup_AbortAtSummary(t *testing.T) {
 		"y",                           // Enable AI Review
 		"n",                           // Enable SonarQube
 		"n",                           // Enable Semgrep
-		"https://gateway.example.com", // AI Gateway URL
+		testGatewayURL, // AI Gateway URL
 		"",                            // AI Model
 		"",                            // AI Provider
 		"n",                           // Save? NO
@@ -430,7 +437,7 @@ func TestRunSetup_AbortAtSummary(t *testing.T) {
 
 	err := runSetup(nil, nil)
 	if err != nil {
-		t.Fatalf("runSetup: %v", err)
+		t.Fatalf(msgRunSetup, err)
 	}
 
 	// Config file should NOT exist

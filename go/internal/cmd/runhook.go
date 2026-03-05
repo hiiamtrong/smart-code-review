@@ -67,43 +67,41 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	var counts hookCounts
+	var stages []display.StageSummary
+	var blocked bool
+	var result *gateway.ReviewResult
+
+	addCounts := func(name string, c hookCounts) {
+		counts.errCount += c.errCount
+		counts.warnCount += c.warnCount
+		counts.infoCount += c.infoCount
+		stage := display.StageSummary{Name: name, Errors: c.errCount, Warnings: c.warnCount, Infos: c.infoCount}
+		stages = append(stages, stage)
+		display.PrintStageSummary(stage)
+		if c.blocked {
+			blocked = true
+			counts.blocked = true
+		}
+	}
 
 	// Stage 1: Semgrep (local static analysis — fastest)
 	if cfg.EnableSemgrep {
-		sgCounts := hookRunSemgrep(cfg, repoRoot, diff)
-		counts.errCount += sgCounts.errCount
-		counts.warnCount += sgCounts.warnCount
-		counts.infoCount += sgCounts.infoCount
-		if sgCounts.blocked {
-			return errBlocked
-		}
+		addCounts("Semgrep", hookRunSemgrep(cfg, repoRoot, diff))
 	}
 
 	// Stage 2: SonarQube (server-based analysis)
-	if cfg.EnableSonarQube && cfg.SonarToken != "" {
-		sqCounts := hookRunSonarQube(cfg, repoRoot, diff)
-		counts.errCount += sqCounts.errCount
-		counts.warnCount += sqCounts.warnCount
-		counts.infoCount += sqCounts.infoCount
-		if sqCounts.blocked {
-			return errBlocked
-		}
+	if !blocked && cfg.EnableSonarQube && cfg.SonarToken != "" {
+		addCounts("SonarQube", hookRunSonarQube(cfg, repoRoot, diff))
 	}
 
 	// Stage 3: AI code review
-	aiCounts, result := hookRunAIReview(cfg, annotatedDiff, lang, gitInfo)
-	if aiCounts.blocked {
-		return errBlocked
-	}
-	if result == nil {
-		return nil // non-blocking gateway error
+	if !blocked {
+		var aiCounts hookCounts
+		aiCounts, result = hookRunAIReview(cfg, annotatedDiff, lang, gitInfo)
+		addCounts("AI", aiCounts)
 	}
 
-	counts.errCount += aiCounts.errCount
-	counts.warnCount += aiCounts.warnCount
-	counts.infoCount += aiCounts.infoCount
-
-	return hookFinalize(result, counts)
+	return hookFinalize(result, counts, stages)
 }
 
 // hookPrepareDiff gets the staged diff, filters ignored files, annotates line
@@ -283,7 +281,7 @@ func hookRunSemgrep(cfg *config.Config, repoRoot, diff string) hookCounts {
 // hookRunAIReview calls the AI gateway for code review and returns diagnostic
 // counts plus the result. A nil result means a non-blocking gateway error.
 func hookRunAIReview(cfg *config.Config, annotatedDiff, lang string, gitInfo git.GitInfo) (hookCounts, *gateway.ReviewResult) {
-	display.PrintStageHeader("AI Code Review")
+	display.PrintStageHeader("AI Analysis")
 
 	var counts hookCounts
 
@@ -338,17 +336,17 @@ func hookRunAIReview(cfg *config.Config, annotatedDiff, lang string, gitInfo git
 
 // hookFinalize displays the overview and summary, then decides whether to
 // block the commit.
-func hookFinalize(result *gateway.ReviewResult, counts hookCounts) error {
+func hookFinalize(result *gateway.ReviewResult, counts hookCounts, stages []display.StageSummary) error {
 	if result != nil && result.Overview != "" {
 		display.Divider()
 		fmt.Println(result.Overview)
 	}
 
 	display.Divider()
-	display.PrintSummary(counts.errCount, counts.warnCount, counts.infoCount)
+	display.PrintStageSummaries(stages, counts.errCount, counts.warnCount, counts.infoCount)
 	display.Divider()
 
-	if counts.errCount > 0 {
+	if counts.blocked || counts.errCount > 0 {
 		display.LogError("Commit blocked: fix the errors above before committing")
 		return errBlocked
 	}

@@ -8,6 +8,11 @@ import (
 	"testing"
 )
 
+const (
+	testModelClaude = "claude-opus-4"
+	msgLoad         = "Load: %v"
+)
+
 func TestParseShellConfig(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -96,7 +101,7 @@ func TestSaveAndLoad(t *testing.T) {
 	cfg := Defaults()
 	cfg.AIGatewayURL = "https://gateway.example.com"
 	cfg.AIGatewayAPIKey = "secret-key-123"
-	cfg.AIModel = "claude-opus-4"
+	cfg.AIModel = testModelClaude
 	cfg.EnableSonarQube = true
 
 	if err := Save(cfg); err != nil {
@@ -105,7 +110,7 @@ func TestSaveAndLoad(t *testing.T) {
 
 	loaded, err := Load()
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf(msgLoad, err)
 	}
 
 	if loaded.AIGatewayURL != cfg.AIGatewayURL {
@@ -159,7 +164,7 @@ func TestGetField_allKeys(t *testing.T) {
 	cfg := Defaults()
 	cfg.AIGatewayURL = "https://gw.example.com"
 	cfg.AIGatewayAPIKey = "secret"
-	cfg.AIModel = "claude-opus-4"
+	cfg.AIModel = testModelClaude
 	cfg.AIProvider = "anthropic"
 	cfg.EnableAIReview = true
 	cfg.EnableSonarQube = true
@@ -176,7 +181,7 @@ func TestGetField_allKeys(t *testing.T) {
 	cases := []struct{ key, want string }{
 		{"AI_GATEWAY_URL", "https://gw.example.com"},
 		{"AI_GATEWAY_API_KEY", "secret"},
-		{"AI_MODEL", "claude-opus-4"},
+		{"AI_MODEL", testModelClaude},
 		{"AI_PROVIDER", "anthropic"},
 		{"ENABLE_AI_REVIEW", "true"},
 		{"ENABLE_SONARQUBE_LOCAL", "true"},
@@ -211,7 +216,7 @@ func TestLoadFromEnvVarsOnly(t *testing.T) {
 	setTestHome(t, dir) // ensures no config file exists
 	t.Setenv("AI_GATEWAY_URL", "https://ci-gateway.example.com")
 	t.Setenv("AI_GATEWAY_API_KEY", "ci-secret")
-	t.Setenv("AI_MODEL", "claude-opus-4")
+	t.Setenv("AI_MODEL", testModelClaude)
 	defer func() {
 		os.Unsetenv("AI_GATEWAY_URL")
 		os.Unsetenv("AI_GATEWAY_API_KEY")
@@ -228,7 +233,7 @@ func TestLoadFromEnvVarsOnly(t *testing.T) {
 	if cfg.AIGatewayAPIKey != "ci-secret" {
 		t.Errorf("AIGatewayAPIKey = %q, want env value", cfg.AIGatewayAPIKey)
 	}
-	if cfg.AIModel != "claude-opus-4" {
+	if cfg.AIModel != testModelClaude {
 		t.Errorf("AIModel = %q, want env value", cfg.AIModel)
 	}
 }
@@ -251,7 +256,7 @@ func TestEnvVarsOverrideFile(t *testing.T) {
 
 	loaded, err := Load()
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf(msgLoad, err)
 	}
 	if loaded.AIGatewayURL != "https://env-gateway.example.com" {
 		t.Errorf("env var should override file: got %q", loaded.AIGatewayURL)
@@ -265,7 +270,7 @@ func TestGatewayTimeoutSecEnvVar(t *testing.T) {
 
 	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf(msgLoad, err)
 	}
 	if cfg.GatewayTimeoutSec != 30 {
 		t.Errorf("GatewayTimeoutSec = %d, want 30", cfg.GatewayTimeoutSec)

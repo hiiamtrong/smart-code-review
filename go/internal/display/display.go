@@ -61,9 +61,30 @@ func printIssueWithSource(source, severity, file string, line int, message strin
 	Bold.Printf("        %s:%d\n", file, line)
 }
 
+// StageSummary holds counts for a single review stage.
+type StageSummary struct {
+	Name                           string
+	Errors, Warnings, Infos        int
+}
+
+// PrintStageSummary prints the summary line for a single stage.
+func PrintStageSummary(s StageSummary) {
+	fmt.Printf("  %s: %d errors, %d warnings, %d info\n", s.Name, s.Errors, s.Warnings, s.Infos)
+}
+
+// PrintStageSummaries prints per-tool breakdowns followed by a total.
+func PrintStageSummaries(stages []StageSummary, totalErr, totalWarn, totalInfo int) {
+	for _, s := range stages {
+		fmt.Printf("  %-20s %d errors, %d warnings, %d info\n", s.Name+":", s.Errors, s.Warnings, s.Infos)
+	}
+	fmt.Println()
+	Bold.Printf("Review Summary: ")
+	fmt.Printf("%d errors, %d warnings, %d info\n", totalErr, totalWarn, totalInfo)
+}
+
 // PrintSummary prints the final review summary line.
 func PrintSummary(errors, warnings, infos int) {
-	Bold.Printf("AI Review Summary: ")
+	Bold.Printf("Review Summary: ")
 	fmt.Printf("%d errors, %d warnings, %d info\n", errors, warnings, infos)
 }
 

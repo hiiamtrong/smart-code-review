@@ -16,6 +16,8 @@ import (
 	"golang.org/x/term"
 )
 
+const summaryFmt = "  %-35s %s\n"
+
 var setupProjectFlag bool
 
 var setupCmd = &cobra.Command{
@@ -47,52 +49,10 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	display.Bold.Println("AI Review Setup")
 	display.PrintSeparator()
 
-	// ── Step 1: Feature Flags ──
-	fmt.Println()
-	display.Bold.Println("── Step 1: Feature Flags ──")
-	cfg.EnableAIReview = promptBool(reader, "Enable AI Review?", cfg.EnableAIReview)
-	cfg.EnableSonarQube = promptBool(reader, "Enable SonarQube Review?", cfg.EnableSonarQube)
-	cfg.EnableSemgrep = promptBool(reader, "Enable Semgrep Analysis?", cfg.EnableSemgrep)
-
-	// ── Step 2: AI Gateway (conditional) ──
-	if cfg.EnableAIReview {
-		fmt.Println()
-		display.Bold.Println("── Step 2: AI Gateway ──")
-		cfg.AIGatewayURL = promptStringRequired(reader, "AI Gateway URL", cfg.AIGatewayURL)
-		cfg.AIGatewayAPIKey = promptPasswordRequired("AI Gateway API Key", cfg.AIGatewayAPIKey)
-		cfg.AIModel = promptString(reader, "AI Model", cfg.AIModel, false)
-		if cfg.AIModel == "" {
-			cfg.AIModel = "gemini-2.0-flash"
-		}
-		cfg.AIProvider = promptString(reader, "AI Provider", cfg.AIProvider, false)
-		if cfg.AIProvider == "" {
-			cfg.AIProvider = "google"
-		}
-
-		}
-
-	// ── Step 3: SonarQube Settings (conditional) ──
-	if cfg.EnableSonarQube {
-		fmt.Println()
-		display.Bold.Println("── Step 3: SonarQube Settings ──")
-		cfg.SonarHostURL = promptStringRequired(reader, "SonarQube Host URL", cfg.SonarHostURL)
-		cfg.SonarToken = promptPasswordRequired("SonarQube Token", cfg.SonarToken)
-		if cfg.SonarProjectKey == "" {
-			cfg.SonarProjectKey = detectRepoName()
-		}
-		cfg.SonarProjectKey = promptStringRequired(reader, "SonarQube Project Key", cfg.SonarProjectKey)
-	}
-
-	// ── Step 4: Semgrep Settings (conditional) ──
-	if cfg.EnableSemgrep {
-		fmt.Println()
-		display.Bold.Println("── Step 4: Semgrep Settings ──")
-		fmt.Println("  Rules config: 'auto' (auto-detect), 'p/default', or path to .semgrep.yml")
-		cfg.SemgrepRules = promptString(reader, "Semgrep Rules", cfg.SemgrepRules, false)
-		if cfg.SemgrepRules == "" {
-			cfg.SemgrepRules = "auto"
-		}
-	}
+	setupStepFeatureFlags(reader, cfg)
+	setupStepAIGateway(reader, cfg)
+	setupStepSonarQube(reader, cfg)
+	setupStepSemgrep(reader, cfg)
 
 	// ── Summary ──
 	fmt.Println()
@@ -105,7 +65,63 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Save
+	return saveSetupConfig(cfg)
+}
+
+func setupStepFeatureFlags(reader *bufio.Reader, cfg *config.Config) {
+	fmt.Println()
+	display.Bold.Println("── Step 1: Feature Flags ──")
+	cfg.EnableAIReview = promptBool(reader, "Enable AI Review?", cfg.EnableAIReview)
+	cfg.EnableSonarQube = promptBool(reader, "Enable SonarQube Review?", cfg.EnableSonarQube)
+	cfg.EnableSemgrep = promptBool(reader, "Enable Semgrep Analysis?", cfg.EnableSemgrep)
+}
+
+func setupStepAIGateway(reader *bufio.Reader, cfg *config.Config) {
+	if !cfg.EnableAIReview {
+		return
+	}
+	fmt.Println()
+	display.Bold.Println("── Step 2: AI Gateway ──")
+	cfg.AIGatewayURL = promptStringRequired(reader, "AI Gateway URL", cfg.AIGatewayURL)
+	cfg.AIGatewayAPIKey = promptPasswordRequired("AI Gateway API Key", cfg.AIGatewayAPIKey)
+	cfg.AIModel = promptString(reader, "AI Model", cfg.AIModel, false)
+	if cfg.AIModel == "" {
+		cfg.AIModel = "gemini-2.0-flash"
+	}
+	cfg.AIProvider = promptString(reader, "AI Provider", cfg.AIProvider, false)
+	if cfg.AIProvider == "" {
+		cfg.AIProvider = "google"
+	}
+}
+
+func setupStepSonarQube(reader *bufio.Reader, cfg *config.Config) {
+	if !cfg.EnableSonarQube {
+		return
+	}
+	fmt.Println()
+	display.Bold.Println("── Step 3: SonarQube Settings ──")
+	cfg.SonarHostURL = promptStringRequired(reader, "SonarQube Host URL", cfg.SonarHostURL)
+	cfg.SonarToken = promptPasswordRequired("SonarQube Token", cfg.SonarToken)
+	if cfg.SonarProjectKey == "" {
+		cfg.SonarProjectKey = detectRepoName()
+	}
+	cfg.SonarProjectKey = promptStringRequired(reader, "SonarQube Project Key", cfg.SonarProjectKey)
+}
+
+func setupStepSemgrep(reader *bufio.Reader, cfg *config.Config) {
+	if !cfg.EnableSemgrep {
+		return
+	}
+	fmt.Println()
+	display.Bold.Println("── Step 4: Semgrep Settings ──")
+	fmt.Println("  Rules config: 'auto' (auto-detect), 'p/default', or path to .semgrep.yml")
+	cfg.SemgrepRules = promptString(reader, "Semgrep Rules", cfg.SemgrepRules, false)
+	if cfg.SemgrepRules == "" {
+		cfg.SemgrepRules = "auto"
+	}
+}
+
+func saveSetupConfig(cfg *config.Config) error {
 	if setupProjectFlag {
 		for _, key := range config.AllConfigKeys() {
 			val := config.GetField(cfg, key)
@@ -213,22 +229,22 @@ func promptPasswordRequired(label, current string) string {
 
 func printSetupSummary(cfg *config.Config) {
 	display.PrintSeparator()
-	fmt.Printf("  %-35s %s\n", "ENABLE_AI_REVIEW", boolStr(cfg.EnableAIReview))
-	fmt.Printf("  %-35s %s\n", "ENABLE_SONARQUBE_LOCAL", boolStr(cfg.EnableSonarQube))
-	fmt.Printf("  %-35s %s\n", "ENABLE_SEMGREP", boolStr(cfg.EnableSemgrep))
+	fmt.Printf(summaryFmt, "ENABLE_AI_REVIEW", boolStr(cfg.EnableAIReview))
+	fmt.Printf(summaryFmt, "ENABLE_SONARQUBE_LOCAL", boolStr(cfg.EnableSonarQube))
+	fmt.Printf(summaryFmt, "ENABLE_SEMGREP", boolStr(cfg.EnableSemgrep))
 	if cfg.EnableAIReview {
-		fmt.Printf("  %-35s %s\n", "AI_GATEWAY_URL", orNotSet(cfg.AIGatewayURL))
-		fmt.Printf("  %-35s %s\n", "AI_GATEWAY_API_KEY", maskIfSet(cfg.AIGatewayAPIKey))
-		fmt.Printf("  %-35s %s\n", "AI_MODEL", orNotSet(cfg.AIModel))
-		fmt.Printf("  %-35s %s\n", "AI_PROVIDER", orNotSet(cfg.AIProvider))
+		fmt.Printf(summaryFmt, "AI_GATEWAY_URL", orNotSet(cfg.AIGatewayURL))
+		fmt.Printf(summaryFmt, "AI_GATEWAY_API_KEY", maskIfSet(cfg.AIGatewayAPIKey))
+		fmt.Printf(summaryFmt, "AI_MODEL", orNotSet(cfg.AIModel))
+		fmt.Printf(summaryFmt, "AI_PROVIDER", orNotSet(cfg.AIProvider))
 	}
 	if cfg.EnableSonarQube {
-		fmt.Printf("  %-35s %s\n", "SONAR_HOST_URL", orNotSet(cfg.SonarHostURL))
-		fmt.Printf("  %-35s %s\n", "SONAR_TOKEN", maskIfSet(cfg.SonarToken))
-		fmt.Printf("  %-35s %s\n", "SONAR_PROJECT_KEY", orNotSet(cfg.SonarProjectKey))
+		fmt.Printf(summaryFmt, "SONAR_HOST_URL", orNotSet(cfg.SonarHostURL))
+		fmt.Printf(summaryFmt, "SONAR_TOKEN", maskIfSet(cfg.SonarToken))
+		fmt.Printf(summaryFmt, "SONAR_PROJECT_KEY", orNotSet(cfg.SonarProjectKey))
 	}
 	if cfg.EnableSemgrep {
-		fmt.Printf("  %-35s %s\n", "SEMGREP_RULES", orNotSet(cfg.SemgrepRules))
+		fmt.Printf(summaryFmt, "SEMGREP_RULES", orNotSet(cfg.SemgrepRules))
 	}
 	display.PrintSeparator()
 }

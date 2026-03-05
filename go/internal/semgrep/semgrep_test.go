@@ -7,6 +7,14 @@ import (
 	"testing"
 )
 
+const (
+	msgScanFiles     = "ScanFiles: %v"
+	msgParseOutput   = "parseOutput: %v"
+	msgNoDiags       = "expected 0 diagnostics, got %d"
+	skipWindows      = "shell script test not applicable on windows"
+	testFileMainGo   = "main.go"
+)
+
 // ─── FindSemgrep ─────────────────────────────────────────────────────────────
 
 func TestFindSemgrep_NotFound(t *testing.T) {
@@ -73,16 +81,16 @@ func TestFindSemgrep_FoundInLocalBin(t *testing.T) {
 func TestScanFiles_EmptyFileList(t *testing.T) {
 	res, err := ScanFiles("/usr/bin/semgrep", SemgrepConfig{}, nil, "/repo")
 	if err != nil {
-		t.Fatalf("ScanFiles: %v", err)
+		t.Fatalf(msgScanFiles, err)
 	}
 	if len(res.Diagnostics) != 0 {
-		t.Errorf("expected 0 diagnostics for empty file list, got %d", len(res.Diagnostics))
+		t.Errorf(msgNoDiags, len(res.Diagnostics))
 	}
 }
 
 func TestScanFiles_WithFindings(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("shell script test not applicable on windows")
+		t.Skip(skipWindows)
 	}
 
 	// Create a fake semgrep that outputs JSON with findings and exits 1.
@@ -112,9 +120,9 @@ exit 1
 		t.Fatal(err)
 	}
 
-	res, err := ScanFiles(fakeBin, SemgrepConfig{Rules: "auto"}, []string{"main.go"}, dir)
+	res, err := ScanFiles(fakeBin, SemgrepConfig{Rules: "auto"}, []string{testFileMainGo}, dir)
 	if err != nil {
-		t.Fatalf("ScanFiles: %v", err)
+		t.Fatalf(msgScanFiles, err)
 	}
 	if len(res.Diagnostics) != 1 {
 		t.Fatalf("expected 1 diagnostic, got %d", len(res.Diagnostics))
@@ -132,7 +140,7 @@ exit 1
 
 func TestScanFiles_NoFindings(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("shell script test not applicable on windows")
+		t.Skip(skipWindows)
 	}
 
 	dir := t.TempDir()
@@ -145,18 +153,18 @@ exit 0
 		t.Fatal(err)
 	}
 
-	res, err := ScanFiles(fakeBin, SemgrepConfig{}, []string{"main.go"}, dir)
+	res, err := ScanFiles(fakeBin, SemgrepConfig{}, []string{testFileMainGo}, dir)
 	if err != nil {
-		t.Fatalf("ScanFiles: %v", err)
+		t.Fatalf(msgScanFiles, err)
 	}
 	if len(res.Diagnostics) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d", len(res.Diagnostics))
+		t.Errorf(msgNoDiags, len(res.Diagnostics))
 	}
 }
 
 func TestScanFiles_BinaryFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("shell script test not applicable on windows")
+		t.Skip(skipWindows)
 	}
 
 	dir := t.TempDir()
@@ -170,7 +178,7 @@ exit 2
 		t.Fatal(err)
 	}
 
-	_, err := ScanFiles(fakeBin, SemgrepConfig{}, []string{"main.go"}, dir)
+	_, err := ScanFiles(fakeBin, SemgrepConfig{}, []string{testFileMainGo}, dir)
 	if err == nil {
 		t.Error("expected error for exit code 2")
 	}
@@ -178,7 +186,7 @@ exit 2
 
 func TestScanFiles_InvalidOutput(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("shell script test not applicable on windows")
+		t.Skip(skipWindows)
 	}
 
 	dir := t.TempDir()
@@ -191,7 +199,7 @@ exit 0
 		t.Fatal(err)
 	}
 
-	_, err := ScanFiles(fakeBin, SemgrepConfig{}, []string{"main.go"}, dir)
+	_, err := ScanFiles(fakeBin, SemgrepConfig{}, []string{testFileMainGo}, dir)
 	if err == nil {
 		t.Error("expected error for invalid JSON output")
 	}
@@ -199,7 +207,7 @@ exit 0
 
 func TestScanFiles_DefaultRules(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("shell script test not applicable on windows")
+		t.Skip(skipWindows)
 	}
 
 	// Verify that empty Rules defaults to "auto"
@@ -213,9 +221,9 @@ echo '{"results": [], "errors": []}'
 		t.Fatal(err)
 	}
 
-	res, err := ScanFiles(fakeBin, SemgrepConfig{Rules: ""}, []string{"main.go"}, dir)
+	res, err := ScanFiles(fakeBin, SemgrepConfig{Rules: ""}, []string{testFileMainGo}, dir)
 	if err != nil {
-		t.Fatalf("ScanFiles: %v", err)
+		t.Fatalf(msgScanFiles, err)
 	}
 	if res == nil {
 		t.Fatal("expected non-nil result")
@@ -223,7 +231,7 @@ echo '{"results": [], "errors": []}'
 }
 
 func TestScanFiles_BinaryNotFound(t *testing.T) {
-	_, err := ScanFiles("/nonexistent/semgrep", SemgrepConfig{}, []string{"main.go"}, t.TempDir())
+	_, err := ScanFiles("/nonexistent/semgrep", SemgrepConfig{}, []string{testFileMainGo}, t.TempDir())
 	if err == nil {
 		t.Error("expected error when binary does not exist")
 	}
@@ -234,10 +242,10 @@ func TestScanFiles_BinaryNotFound(t *testing.T) {
 func TestParseOutput_Empty(t *testing.T) {
 	diags, err := parseOutput([]byte{}, "/repo")
 	if err != nil {
-		t.Fatalf("parseOutput: %v", err)
+		t.Fatalf(msgParseOutput, err)
 	}
 	if len(diags) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d", len(diags))
+		t.Errorf(msgNoDiags, len(diags))
 	}
 }
 
@@ -280,7 +288,7 @@ func TestParseOutput_ValidResults(t *testing.T) {
 
 	diags, err := parseOutput([]byte(jsonData), "/repo")
 	if err != nil {
-		t.Fatalf("parseOutput: %v", err)
+		t.Fatalf(msgParseOutput, err)
 	}
 
 	if len(diags) != 3 {
@@ -343,7 +351,7 @@ func TestParseOutput_AbsolutePathConversion(t *testing.T) {
 
 	diags, err := parseOutput([]byte(jsonData), repoRoot)
 	if err != nil {
-		t.Fatalf("parseOutput: %v", err)
+		t.Fatalf(msgParseOutput, err)
 	}
 
 	if len(diags) != 1 {
@@ -373,7 +381,7 @@ func TestParseOutput_RelativePathKept(t *testing.T) {
 
 	diags, err := parseOutput([]byte(jsonData), "/repo")
 	if err != nil {
-		t.Fatalf("parseOutput: %v", err)
+		t.Fatalf(msgParseOutput, err)
 	}
 	if diags[0].Location.Path != "src/main.go" {
 		t.Errorf("relative path should be preserved, got %q", diags[0].Location.Path)
@@ -399,7 +407,7 @@ func TestParseOutput_EmptyRepoRoot(t *testing.T) {
 
 	diags, err := parseOutput([]byte(jsonData), "")
 	if err != nil {
-		t.Fatalf("parseOutput: %v", err)
+		t.Fatalf(msgParseOutput, err)
 	}
 	// With empty repoRoot, absolute path should be preserved as-is
 	if diags[0].Location.Path != "/abs/path/file.go" {
@@ -418,10 +426,10 @@ func TestParseOutput_NoResults(t *testing.T) {
 	jsonData := `{"results": [], "errors": []}`
 	diags, err := parseOutput([]byte(jsonData), "/repo")
 	if err != nil {
-		t.Fatalf("parseOutput: %v", err)
+		t.Fatalf(msgParseOutput, err)
 	}
 	if len(diags) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d", len(diags))
+		t.Errorf(msgNoDiags, len(diags))
 	}
 }
 
