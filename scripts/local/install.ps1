@@ -77,9 +77,13 @@ $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*$BinDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$BinDir;$userPath", "User")
     Write-Success "Added $BinDir to User PATH"
-    Write-Warn  "Restart your terminal for the PATH change to take effect"
 } else {
     Write-Success "$BinDir is already in PATH"
+}
+
+# Make binary available in the current session immediately
+if ($env:Path -notlike "*$BinDir*") {
+    $env:Path = "$BinDir;$env:Path"
 }
 
 # ── Success ───────────────────────────────────────────────────────────────────
