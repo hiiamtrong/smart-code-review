@@ -31,11 +31,15 @@ Describe 'install.ps1' -Skip:(-not $IsWindows) {
     # Mock functions are prepended so they shadow real cmdlets (PowerShell
     # resolves Functions before Cmdlets).  The original script is appended
     # verbatim, so no refactoring of install.ps1 is required.
-    function Invoke-Installer {
-        param([string]$ExtraPreamble = '')
+    #
+    # NOTE: In Pester 5+ functions must be defined inside BeforeAll so they
+    # survive from the Discovery phase into the Run phase.
+    BeforeAll {
+        function Invoke-Installer {
+            param([string]$ExtraPreamble = '')
 
-        $mocks = @"
-# ── Mock functions (shadow real cmdlets) ─────────────────────────────
+            $mocks = @"
+# ── Mock functions (shadow real cmdlets) ─────────────────────────
 function Invoke-RestMethod {
     param(`$Uri, `$Headers)
     [PSCustomObject]@{ tag_name = 'v9.9.9' }
@@ -53,22 +57,23 @@ function Expand-Archive {
 }
 
 `$env:AI_REVIEW_BIN_DIR = '$($Script:TestBinDir)'
-# ─────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
 "@
 
-        $scriptBody = Get-Content -Path $Script:ScriptPath -Raw
-        $tempScript = Join-Path ([System.IO.Path]::GetTempPath()) "install-test-$(Get-Random).ps1"
-        $content    = $mocks, $ExtraPreamble, $scriptBody -join "`n"
-        Set-Content -Path $tempScript -Value $content -Force
+            $scriptBody = Get-Content -Path $Script:ScriptPath -Raw
+            $tempScript = Join-Path ([System.IO.Path]::GetTempPath()) "install-test-$(Get-Random).ps1"
+            $content    = $mocks, $ExtraPreamble, $scriptBody -join "`n"
+            Set-Content -Path $tempScript -Value $content -Force
 
-        try {
-            $output = & pwsh -NoProfile -File $tempScript 2>&1 | Out-String
-            return @{
-                Output   = $output
-                ExitCode = $LASTEXITCODE
+            try {
+                $output = & pwsh -NoProfile -File $tempScript 2>&1 | Out-String
+                return @{
+                    Output   = $output
+                    ExitCode = $LASTEXITCODE
+                }
+            } finally {
+                Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
             }
-        } finally {
-            Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
         }
     }
 

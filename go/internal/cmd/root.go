@@ -32,4 +32,7 @@ func Execute() {
 
 func init() {
 	rootCmd.SetVersionTemplate("ai-review version {{.Version}}\n")
+	// We handle error printing ourselves in Execute(), so tell cobra
+	// not to print errors (avoids bare "Error:" line for errBlocked).
+	rootCmd.SilenceErrors = true
 }

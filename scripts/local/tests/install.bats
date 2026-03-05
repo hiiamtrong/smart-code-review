@@ -32,7 +32,9 @@ setup() {
 
   # ── PATH isolation: symlink required system utilities ──────────────────────
   # Use PATH=/usr/bin:/bin to resolve real binary paths (not shell aliases).
-  for _cmd in grep sed head mktemp tar install mkdir rm cp; do
+  # NOTE: gzip is required because GNU tar (Linux) invokes external gzip
+  # for the -z flag, unlike bsdtar (macOS) which has built-in zlib.
+  for _cmd in grep sed head mktemp tar install mkdir rm cp gzip; do
     _real="$(PATH=/usr/bin:/bin command -v "$_cmd" 2>/dev/null)"
     [[ -n "$_real" && -f "$_real" ]] && ln -sf "$_real" "$STUBS_DIR/$_cmd"
   done
@@ -93,25 +95,36 @@ teardown() {
   rm -rf "$STUBS_DIR" "$TEST_HOME"
 }
 
+# ── Helpers: diagnostics ──────────────────────────────────────────────────────
+
+# Print output & status when an assertion fails (visible in CI logs).
+assert_success() {
+  if [ "$status" -ne 0 ]; then
+    printf '# status: %s\n' "$status" >&2
+    printf '# output:\n%s\n' "$output" | sed 's/^/#   /' >&2
+    return 1
+  fi
+}
+
 # ── detect_platform ───────────────────────────────────────────────────────────
 
 @test "detect_platform: Linux/x86_64" {
   run "${INSTALLER[@]}" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"linux/x86_64"* ]]
 }
 
 @test "detect_platform: Darwin/arm64" {
   make_stub uname 'case "$1" in -s) echo "Darwin";; -m) echo "arm64";; esac'
   run "${INSTALLER[@]}" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"darwin/arm64"* ]]
 }
 
 @test "detect_platform: Linux/aarch64 normalizes to arm64" {
   make_stub uname 'case "$1" in -s) echo "Linux";; -m) echo "aarch64";; esac'
   run "${INSTALLER[@]}" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"arm64"* ]]
 }
 
@@ -133,14 +146,14 @@ teardown() {
 
 @test "fetch_latest_tag: reads tag via curl" {
   run "${INSTALLER[@]}"           # no --version → calls fetch_latest_tag
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"v9.9.9"* ]]
 }
 
 @test "fetch_latest_tag: falls back to wget when curl absent" {
   rm -f "$STUBS_DIR/curl"         # removes curl from the stubs-only PATH
   run "${INSTALLER[@]}"
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"v9.9.9"* ]]
 }
 
@@ -165,7 +178,7 @@ teardown() {
   # were called it would set TAG=v9.9.9, overriding the flag. Testing that
   # the output contains v1.2.3 (not v9.9.9) proves fetch was skipped.
   run "${INSTALLER[@]}" --version v1.2.3
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"v1.2.3"* ]]
   [[ "$output" != *"v9.9.9"* ]]
 }
@@ -174,7 +187,7 @@ teardown() {
 
 @test "EXIT trap: no 'unbound variable' error on successful exit" {
   run "${INSTALLER[@]}" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" != *"unbound variable"* ]]
 }
 
@@ -196,7 +209,7 @@ teardown() {
     "AI_REVIEW_BIN_DIR=$bin" \
     "FAKE_ARCHIVE=$FAKE_ARCHIVE" \
     /bin/bash "$INSTALL_SCRIPT" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"already in PATH"* ]]
 }
 
@@ -209,7 +222,7 @@ teardown() {
     "AI_REVIEW_BIN_DIR=$TEST_HOME/.local/bin" \
     "FAKE_ARCHIVE=$FAKE_ARCHIVE" \
     /bin/bash "$INSTALL_SCRIPT" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   grep -q 'export PATH' "$TEST_HOME/.zshrc"
 }
 
@@ -222,7 +235,7 @@ teardown() {
     "FAKE_ARCHIVE=$FAKE_ARCHIVE" \
     "SHELL=/bin/bash" \
     /bin/bash "$INSTALL_SCRIPT" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   grep -q 'export PATH' "$TEST_HOME/.bashrc"
 }
 
@@ -237,7 +250,7 @@ teardown() {
     "AI_REVIEW_BIN_DIR=$TEST_HOME/.local/bin" \
     "FAKE_ARCHIVE=$FAKE_ARCHIVE" \
     /bin/bash "$INSTALL_SCRIPT" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [ "$(grep -c 'ai-review installer' "$TEST_HOME/.zshrc")" -eq 1 ]
 }
 
@@ -247,19 +260,19 @@ teardown() {
 
 @test "print_next_steps: mentions per-project config with --project flag" {
   run "${INSTALLER[@]}" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"--project"* ]]
 }
 
 @test "print_next_steps: mentions config set for SonarQube" {
   run "${INSTALLER[@]}" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"ENABLE_SONARQUBE_LOCAL"* ]]
 }
 
 @test "print_next_steps: mentions AI review config" {
   run "${INSTALLER[@]}" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [[ "$output" == *"ENABLE_AI_REVIEW"* ]]
 }
 
@@ -267,7 +280,7 @@ teardown() {
 
 @test "binary is installed to BIN_DIR after successful run" {
   run "${INSTALLER[@]}" --version v9.9.9
-  [ "$status" -eq 0 ]
+  assert_success
   [ -f "$TEST_HOME/.local/bin/ai-review" ]
   [ -x "$TEST_HOME/.local/bin/ai-review" ]
 }
