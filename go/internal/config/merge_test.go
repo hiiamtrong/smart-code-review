@@ -43,7 +43,7 @@ func TestDefaultsAsMap_Values(t *testing.T) {
 
 func TestLoadGlobalRaw_NoFile(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	m, err := LoadGlobalRaw()
 	if err != nil {
@@ -56,7 +56,7 @@ func TestLoadGlobalRaw_NoFile(t *testing.T) {
 
 func TestLoadGlobalRaw_WithFile(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	configDir := filepath.Join(dir, testConfigSubdir, testAppName)
 	if err := os.MkdirAll(configDir, 0700); err != nil {
@@ -138,7 +138,7 @@ func TestLoadEnvRaw_InvalidTimeout(t *testing.T) {
 
 func TestLoadMerged_DefaultsOnly(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	cfg, err := LoadMerged()
 	if err != nil {
@@ -154,7 +154,7 @@ func TestLoadMerged_DefaultsOnly(t *testing.T) {
 
 func TestLoadMerged_GlobalOverridesDefaults(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	configDir := filepath.Join(dir, testConfigSubdir, testAppName)
 	if err := os.MkdirAll(configDir, 0700); err != nil {
@@ -185,7 +185,7 @@ GATEWAY_TIMEOUT_SEC="60"
 
 func TestLoadMerged_EnvOverridesGlobal(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	configDir := filepath.Join(dir, testConfigSubdir, testAppName)
 	if err := os.MkdirAll(configDir, 0700); err != nil {
@@ -210,7 +210,7 @@ func TestLoadMerged_EnvOverridesGlobal(t *testing.T) {
 
 func TestLoadMergedWithSources_Labels(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	configDir := filepath.Join(dir, testConfigSubdir, testAppName)
 	if err := os.MkdirAll(configDir, 0700); err != nil {
@@ -244,7 +244,7 @@ func TestLoadMerged_BooleanOverride(t *testing.T) {
 	// This tests the critical boolean merge case: project sets
 	// ENABLE_AI_REVIEW=false should override global's default true.
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	// Global config has ENABLE_AI_REVIEW=true (same as default).
 	configDir := filepath.Join(dir, testConfigSubdir, testAppName)

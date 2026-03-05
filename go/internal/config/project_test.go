@@ -82,7 +82,7 @@ func TestWritePartialConfig(t *testing.T) {
 
 func TestListProjects_Empty(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	projects, err := ListProjects()
 	if err != nil {
@@ -95,7 +95,7 @@ func TestListProjects_Empty(t *testing.T) {
 
 func TestListProjects_MultipleProjects(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	projectsDir := filepath.Join(dir, testConfigSubdir, testAppName, "projects")
 
@@ -131,7 +131,7 @@ func TestListProjects_MultipleProjects(t *testing.T) {
 
 func TestListProjects_SkipsDirWithoutConfig(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	projectsDir := filepath.Join(dir, testConfigSubdir, testAppName, "projects")
 
@@ -152,7 +152,7 @@ func TestListProjects_SkipsDirWithoutConfig(t *testing.T) {
 
 func TestListProjects_MissingRepoPath(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	projectsDir := filepath.Join(dir, testConfigSubdir, testAppName, "projects")
 	pDir := filepath.Join(projectsDir, "abc123def456")
@@ -178,7 +178,7 @@ func TestListProjects_MissingRepoPath(t *testing.T) {
 
 func TestRemoveProject_Exists(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	projectsDir := filepath.Join(dir, testConfigSubdir, testAppName, "projects")
 	id := "remove123456"
@@ -201,7 +201,7 @@ func TestRemoveProject_Exists(t *testing.T) {
 
 func TestRemoveProject_NotFound(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	err := RemoveProject("nonexistent12")
 	if err == nil {

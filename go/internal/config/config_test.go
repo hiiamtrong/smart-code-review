@@ -88,7 +88,7 @@ func TestDefaults(t *testing.T) {
 func TestSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
 	// Override config path via environment
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	if err := os.MkdirAll(filepath.Join(dir, ".config", "ai-review"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestGetField_unknownKey(t *testing.T) {
 func TestLoadFromEnvVarsOnly(t *testing.T) {
 	// Simulate CI: no config file, credentials come from env vars.
 	dir := t.TempDir()
-	t.Setenv("HOME", dir) // ensures no config file exists
+	setTestHome(t, dir) // ensures no config file exists
 	t.Setenv("AI_GATEWAY_URL", "https://ci-gateway.example.com")
 	t.Setenv("AI_GATEWAY_API_KEY", "ci-secret")
 	t.Setenv("AI_MODEL", "claude-opus-4")
@@ -229,7 +229,7 @@ func TestLoadFromEnvVarsOnly(t *testing.T) {
 
 func TestEnvVarsOverrideFile(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	if err := os.MkdirAll(filepath.Join(dir, ".config", "ai-review"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestEnvVarsOverrideFile(t *testing.T) {
 
 func TestGatewayTimeoutSecEnvVar(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 	t.Setenv("GATEWAY_TIMEOUT_SEC", "30")
 
 	cfg, err := Load()
@@ -268,7 +268,7 @@ func TestGatewayTimeoutSecEnvVar(t *testing.T) {
 
 func TestConfigFilePermissions(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("HOME", dir)
+	setTestHome(t, dir)
 
 	cfg := Defaults()
 	cfg.AIGatewayAPIKey = "secret"
