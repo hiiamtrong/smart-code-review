@@ -109,7 +109,7 @@ func TestHookFinalize_NilResult(t *testing.T) {
 func TestRunConfigShow_WithConfig(t *testing.T) {
 	// Create a temp dir with a valid config file so LoadMergedWithSources succeeds.
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
@@ -136,7 +136,7 @@ ENABLE_SONARQUBE="false"
 
 func TestRunConfigGet_UnknownKey(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -150,7 +150,7 @@ func TestRunConfigGet_UnknownKey(t *testing.T) {
 
 func TestRunConfigGet_KnownKey(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -164,7 +164,7 @@ func TestRunConfigGet_KnownKey(t *testing.T) {
 
 func TestRunConfigGet_GlobalFlag(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -183,7 +183,7 @@ func TestRunConfigGet_GlobalFlag(t *testing.T) {
 
 func TestRunConfigGet_GlobalFlag_UnknownKey(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -203,7 +203,7 @@ func TestRunConfigGet_GlobalFlag_UnknownKey(t *testing.T) {
 
 func TestRunConfigSet_GlobalFlag(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -221,7 +221,7 @@ func TestRunConfigSet_GlobalFlag(t *testing.T) {
 
 func TestRunConfigSet_InvalidKey(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	err := runConfigSet("INVALID_KEY", "value")
 	if err == nil {
@@ -231,7 +231,7 @@ func TestRunConfigSet_InvalidKey(t *testing.T) {
 
 func TestRunConfigSet_AutoDetectGlobal(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -258,7 +258,7 @@ func TestRunConfigSet_AutoDetectGlobal(t *testing.T) {
 
 func TestRunConfigListProjects_Empty(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -273,7 +273,7 @@ func TestRunConfigListProjects_Empty(t *testing.T) {
 
 func TestRunConfigRemoveProject_NoRepo(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 	orig, _ := os.Getwd()
 	defer os.Chdir(orig)
 	os.Chdir(tmp)
@@ -287,7 +287,7 @@ func TestRunConfigRemoveProject_NoRepo(t *testing.T) {
 
 func TestRunConfigRemoveProject_WithID(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	// Create projects dir with a project
 	projectsDir := filepath.Join(tmp, ".config", "ai-review", "projects")
@@ -306,7 +306,7 @@ func TestRunConfigRemoveProject_WithID(t *testing.T) {
 
 func TestRunConfig_ShowSubcommand(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -321,7 +321,7 @@ func TestRunConfig_ShowSubcommand(t *testing.T) {
 
 func TestRunConfig_GetSubcommand(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -335,7 +335,7 @@ func TestRunConfig_GetSubcommand(t *testing.T) {
 
 func TestRunConfig_SetSubcommand(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -353,7 +353,7 @@ func TestRunConfig_SetSubcommand(t *testing.T) {
 
 func TestRunConfig_ListProjectsSubcommand(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -366,7 +366,7 @@ func TestRunConfig_ListProjectsSubcommand(t *testing.T) {
 
 func TestRunConfig_RemoveProjectSubcommand(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 	orig, _ := os.Getwd()
 	defer os.Chdir(orig)
 	os.Chdir(tmp)
@@ -380,7 +380,7 @@ func TestRunConfig_RemoveProjectSubcommand(t *testing.T) {
 
 func TestRunConfig_RemoveProjectWithID(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	projectsDir := filepath.Join(tmp, ".config", "ai-review", "projects")
 	projectDir := filepath.Join(projectsDir, "myproj")
@@ -396,7 +396,7 @@ func TestRunConfig_RemoveProjectWithID(t *testing.T) {
 // ─── runUninstall ───────────────────────────────────────────────────────────
 
 func TestRunUninstall_NotAGitRepo(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	tmp := t.TempDir()
 	orig, _ := os.Getwd()
 	defer os.Chdir(orig)
@@ -412,7 +412,7 @@ func TestRunUninstall_NotAGitRepo(t *testing.T) {
 
 func TestRunStatus_WithConfig(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -429,7 +429,7 @@ AI_GATEWAY_API_KEY="test-key"
 
 func TestRunStatus_WithIncompleteCredentials(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -447,7 +447,7 @@ AI_GATEWAY_API_KEY=""
 // ─── runHook (early exits) ──────────────────────────────────────────────────
 
 func TestRunHook_NoConfig(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 
 	err := runHook(nil, nil)
 	if err != nil {
@@ -457,7 +457,7 @@ func TestRunHook_NoConfig(t *testing.T) {
 
 func TestRunHook_AIReviewDisabled(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -475,7 +475,7 @@ ENABLE_AI_REVIEW="false"
 
 func TestRunHook_NoCredentials(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -509,7 +509,7 @@ func TestCiPostPRComment_NoEnvVars(t *testing.T) {
 
 func TestSaveToGlobal_Success(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -523,7 +523,7 @@ func TestSaveToGlobal_Success(t *testing.T) {
 
 func TestSaveToGlobal_InvalidKey(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 
 	configDir := filepath.Join(tmp, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
@@ -539,7 +539,7 @@ func TestSaveToGlobal_InvalidKey(t *testing.T) {
 
 func TestRunConfigSet_ProjectFlag_NoGitRepo(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	setTestHome(t, tmp)
 	orig, _ := os.Getwd()
 	defer os.Chdir(orig)
 	os.Chdir(tmp)

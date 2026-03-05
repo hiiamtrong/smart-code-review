@@ -86,7 +86,7 @@ func TestExtractStagedFiles_Deduplicates(t *testing.T) {
 
 func TestRunStatus_NoConfigFile(t *testing.T) {
 	// Point HOME at an empty temp dir so config.Load() finds no config file.
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 
 	// runStatus should handle the missing config gracefully (log + return nil).
 	err := runStatus(nil, nil)
@@ -110,7 +110,7 @@ func TestRunUpdate_FetchError(t *testing.T) {
 // ─── runConfig ───────────────────────────────────────────────────────────────
 
 func TestRunConfig_UnknownSubcommand(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 
 	// With no config file, Load() errors; but "unknown subcommand" is the
 	// expected error when args don't match any known pattern.
@@ -124,7 +124,7 @@ func TestRunConfig_UnknownSubcommand(t *testing.T) {
 // ─── runInstall (not a git repo) ──────────────────────────────────────────────
 
 func TestRunInstall_NotAGitRepo(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir())
 	// Change to a temp dir that is NOT a git repo.
 	tmp := t.TempDir()
 	orig, _ := os.Getwd()
