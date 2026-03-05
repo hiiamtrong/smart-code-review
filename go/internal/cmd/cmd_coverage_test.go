@@ -9,7 +9,7 @@ import (
 	"github.com/hiiamtrong/smart-code-review/internal/git"
 )
 
-// ─── formatConfigValue ──────────────────────────────────────────────────────
+// ─── formatConfigValue ───────────────────────────────────────────────────────
 
 func TestFormatConfigValue_Sensitive(t *testing.T) {
 	got := formatConfigValue("AI_GATEWAY_API_KEY", "my-secret")

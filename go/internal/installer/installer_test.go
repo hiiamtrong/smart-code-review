@@ -121,21 +121,58 @@ func TestWritePreCommitHook_OverwritesOwnHook(t *testing.T) {
 	}
 }
 
-func TestWritePreCommitHook_RefusesToOverwriteForeignHook(t *testing.T) {
+func TestWritePreCommitHook_AppendsToForeignHook(t *testing.T) {
 	hooksDir := t.TempDir()
 	hookPath := filepath.Join(hooksDir, "pre-commit")
 
-	// Write a hook without our marker.
-	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\necho 'other hook'\n"), 0755); err != nil {
+	original := "#!/bin/sh\necho 'other hook'\n"
+	if err := os.WriteFile(hookPath, []byte(original), 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	err := WritePreCommitHook(hooksDir)
-	if err == nil {
-		t.Fatal("expected error when overwriting foreign hook, got nil")
+	if err := WritePreCommitHook(hooksDir); err != nil {
+		t.Fatalf("WritePreCommitHook: %v", err)
 	}
-	if !strings.Contains(err.Error(), "not created by ai-review") {
-		t.Errorf("unexpected error message: %q", err.Error())
+
+	data, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatalf("read hook: %v", err)
+	}
+	content := string(data)
+	// Original content preserved
+	if !strings.Contains(content, "echo 'other hook'") {
+		t.Error("original hook content was lost")
+	}
+	// Our marker appended
+	if !strings.Contains(content, hookMarker) {
+		t.Error("hook marker not appended")
+	}
+	// Our command appended
+	if !strings.Contains(content, "ai-review run-hook") {
+		t.Error("ai-review run-hook not appended")
+	}
+}
+
+func TestWritePreCommitHook_AppendsIdempotent(t *testing.T) {
+	hooksDir := t.TempDir()
+	hookPath := filepath.Join(hooksDir, "pre-commit")
+
+	original := "#!/bin/sh\necho 'other hook'\n"
+	if err := os.WriteFile(hookPath, []byte(original), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Install twice
+	if err := WritePreCommitHook(hooksDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := WritePreCommitHook(hooksDir); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(hookPath)
+	if strings.Count(string(data), hookMarker) != 1 {
+		t.Error("marker should appear exactly once after double install")
 	}
 }
 
@@ -189,6 +226,37 @@ func TestRemovePreCommitHook_SkipsForeignHook(t *testing.T) {
 	// Foreign hook must not be deleted.
 	if _, err := os.Stat(hookPath); err != nil {
 		t.Error("foreign hook should still exist")
+	}
+}
+
+func TestRemovePreCommitHook_StripsAppendedLines(t *testing.T) {
+	hooksDir := t.TempDir()
+	hookPath := filepath.Join(hooksDir, "pre-commit")
+
+	original := "#!/bin/sh\necho 'husky hook'\n"
+	if err := os.WriteFile(hookPath, []byte(original), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Append our hook
+	if err := WritePreCommitHook(hooksDir); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := RemovePreCommitHook(hooksDir)
+	if err != nil {
+		t.Fatalf("RemovePreCommitHook: %v", err)
+	}
+	if !removed {
+		t.Error("expected removed=true")
+	}
+
+	// File should still exist with original content
+	data, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatal("hook file should still exist after removing appended lines")
+	}
+	if string(data) != original {
+		t.Errorf("expected original content %q, got %q", original, string(data))
 	}
 }
 

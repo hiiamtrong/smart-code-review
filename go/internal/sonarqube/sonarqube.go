@@ -234,6 +234,22 @@ func FetchResults(cfg SonarConfig, changedLineRanges []lineRange) (*Result, erro
 	// Issues.
 	issuesURL := fmt.Sprintf("%s/api/issues/search?componentKeys=%s&resolved=false&ps=500",
 		cfg.HostURL, cfg.ProjectKey)
+
+	// When filtering by changed files, narrow the API query to only those
+	// files instead of fetching the entire project's issues. This avoids
+	// the 500-issue page limit hiding relevant results and is much faster.
+	if cfg.FilterChanged && len(changedLineRanges) > 0 {
+		files := changedFilesFromRanges(changedLineRanges)
+		if len(files) > 0 {
+			var components []string
+			for _, f := range files {
+				components = append(components, cfg.ProjectKey+":"+f)
+			}
+			issuesURL = fmt.Sprintf("%s/api/issues/search?componentKeys=%s&resolved=false&ps=500",
+				cfg.HostURL, strings.Join(components, ","))
+		}
+	}
+
 	issues, err := fetchIssues(issuesURL, cfg.Token)
 	if err != nil {
 		return nil, fmt.Errorf("fetch issues: %w", err)
@@ -241,20 +257,23 @@ func FetchResults(cfg SonarConfig, changedLineRanges []lineRange) (*Result, erro
 
 	diagnostics := convertIssues(issues, cfg.HostURL)
 
-	// Filter to changed lines if requested.
-	if cfg.FilterChanged && len(changedLineRanges) > 0 {
-		diagnostics = filterByChangedLines(diagnostics, changedLineRanges)
-	}
-
 	// Hotspots.
 	hotspotsURL := fmt.Sprintf("%s/api/hotspots/search?projectKey=%s&status=TO_REVIEW&ps=500",
 		cfg.HostURL, cfg.ProjectKey)
 	hotspotCount, hotspotsTruncated := fetchHotspotCount(hotspotsURL, cfg.Token)
 
+	// Only flag truncation when results are NOT filtered to changed lines,
+	// because filtered results are complete for the diff even if the full
+	// project has more than 500 issues.
+	truncated := false
+	if !cfg.FilterChanged {
+		truncated = len(issues) >= 500 || hotspotsTruncated
+	}
+
 	return &Result{
 		Diagnostics:  diagnostics,
 		HotspotCount: hotspotCount,
-		Truncated:    len(issues) >= 500 || hotspotsTruncated,
+		Truncated:    truncated,
 	}, nil
 }
 
@@ -296,6 +315,18 @@ func ParseStagedLineRanges(diff string) []lineRange {
 }
 
 // ─── internal helpers ─────────────────────────────────────────────────────────
+
+func changedFilesFromRanges(ranges []lineRange) []string {
+	seen := make(map[string]bool)
+	var files []string
+	for _, r := range ranges {
+		if !seen[r.File] {
+			seen[r.File] = true
+			files = append(files, r.File)
+		}
+	}
+	return files
+}
 
 func filterByChangedLines(diags []gateway.Diagnostic, ranges []lineRange) []gateway.Diagnostic {
 	// Build set of changed files from the line ranges.

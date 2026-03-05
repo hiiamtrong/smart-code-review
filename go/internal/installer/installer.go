@@ -43,8 +43,11 @@ func GetHooksDir(repoRoot string) (string, error) {
 	return filepath.Join(repoRoot, ".git", "hooks"), nil
 }
 
-// WritePreCommitHook writes the minimal hook script into hooksDir.
-// Returns an error if an existing hook without our marker would be overwritten.
+// appendSnippet is the line appended to existing hooks that were not created by ai-review.
+const appendSnippet = "\n" + hookMarker + "\nai-review run-hook \"$@\"\n"
+
+// WritePreCommitHook writes or appends the ai-review hook into hooksDir.
+// If a hook already exists from another tool (e.g. Husky), it appends rather than overwriting.
 func WritePreCommitHook(hooksDir string) error {
 	if err := os.MkdirAll(hooksDir, 0755); err != nil {
 		return fmt.Errorf("create hooks dir: %w", err)
@@ -52,24 +55,35 @@ func WritePreCommitHook(hooksDir string) error {
 
 	hookPath := filepath.Join(hooksDir, "pre-commit")
 
-	// If a hook exists that isn't ours, refuse to overwrite
-	if existing, err := os.ReadFile(hookPath); err == nil {
-		if !strings.Contains(string(existing), hookMarker) {
-			return fmt.Errorf(
-				"pre-commit hook already exists at %s and was not created by ai-review.\n"+
-					"Add the following line to it manually:\n  exec ai-review run-hook \"$@\"",
-				hookPath,
-			)
+	existing, err := os.ReadFile(hookPath)
+	if err == nil {
+		content := string(existing)
+		// Already installed — nothing to do
+		if strings.Contains(content, hookMarker) {
+			return nil
 		}
+		// Append our snippet to the existing hook
+		f, err := os.OpenFile(hookPath, os.O_APPEND|os.O_WRONLY, 0755)
+		if err != nil {
+			return fmt.Errorf("open hook for append: %w", err)
+		}
+		defer f.Close()
+		if _, err := f.WriteString(appendSnippet); err != nil {
+			return fmt.Errorf("append to hook: %w", err)
+		}
+		return nil
 	}
 
+	// No existing hook — write our full template
 	if err := os.WriteFile(hookPath, []byte(hookTemplate), 0755); err != nil {
 		return fmt.Errorf("write hook: %w", err)
 	}
 	return nil
 }
 
-// RemovePreCommitHook removes the hook file if it contains our marker.
+// RemovePreCommitHook removes ai-review from the hook.
+// If the hook was created entirely by ai-review, the file is deleted.
+// If ai-review was appended to an existing hook, only the appended lines are removed.
 // Returns (true, nil) if removed, (false, nil) if not our hook.
 func RemovePreCommitHook(hooksDir string) (bool, error) {
 	hookPath := filepath.Join(hooksDir, "pre-commit")
@@ -80,11 +94,23 @@ func RemovePreCommitHook(hooksDir string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read hook: %w", err)
 	}
-	if !strings.Contains(string(data), hookMarker) {
+	content := string(data)
+	if !strings.Contains(content, hookMarker) {
 		return false, nil
 	}
-	if err := os.Remove(hookPath); err != nil {
-		return false, fmt.Errorf("remove hook: %w", err)
+
+	// If the file matches our full template, delete it entirely
+	if strings.TrimSpace(content) == strings.TrimSpace(hookTemplate) {
+		if err := os.Remove(hookPath); err != nil {
+			return false, fmt.Errorf("remove hook: %w", err)
+		}
+		return true, nil
+	}
+
+	// Otherwise, strip only our appended lines
+	cleaned := strings.Replace(content, appendSnippet, "", 1)
+	if err := os.WriteFile(hookPath, []byte(cleaned), 0755); err != nil {
+		return false, fmt.Errorf("update hook: %w", err)
 	}
 	return true, nil
 }

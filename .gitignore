@@ -45,3 +45,5 @@ sonar-report.json
 .env.local
 
 *.out
+
+bin
