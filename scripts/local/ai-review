@@ -2,7 +2,7 @@
 set -e
 
 # AI Review CLI Tool
-VERSION="1.27.4"
+VERSION="1.27.5"
 
 # Colors for output
 RED=$'\033[0;31m'
