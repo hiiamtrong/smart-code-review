@@ -16,6 +16,20 @@ import (
 	"testing"
 )
 
+// test constants to satisfy SonarQube S1192 (duplicated literals)
+const (
+	testTagV200        = "v2.0.0"
+	testTagV300        = "v3.0.0"
+	testTempPrefix     = "ai-review-new"
+	testBinaryContent  = "new-binary"
+	testContentFmt     = "content: got %q, want %q"
+	testUnexpectedErr  = "unexpected error: %v"
+	testBinContent     = "binary-content"
+	testZipBinContent  = "zip-binary-content"
+	testArchivePath    = "/archive.tar.gz"
+	testBinName        = "ai-review"
+)
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 // buildTarGz creates an in-memory .tar.gz containing a single file named
@@ -88,14 +102,10 @@ func releaseServer(t *testing.T, tagName string, assets []map[string]string) *ht
 func TestFetchLatest_Success(t *testing.T) {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
-	archLabel := goarch
-	if goarch == "amd64" {
-		archLabel = "x86_64"
-	}
-	assetName := fmt.Sprintf("ai-review_%s_%s.tar.gz", goos, archLabel)
+	assetName := fmt.Sprintf("ai-review_%s_%s.tar.gz", goos, goarch)
 	assetURL := "http://example.com/download/" + assetName
 
-	srv := releaseServer(t, "v2.0.0", []map[string]string{
+	srv := releaseServer(t, testTagV200, []map[string]string{
 		{"name": assetName, "url": assetURL},
 	})
 	defer srv.Close()
@@ -108,8 +118,8 @@ func TestFetchLatest_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchLatest: %v", err)
 	}
-	if rel.Tag != "v2.0.0" {
-		t.Errorf("tag: got %q, want %q", rel.Tag, "v2.0.0")
+	if rel.Tag != testTagV200 {
+		t.Errorf("tag: got %q, want %q", rel.Tag, testTagV200)
 	}
 }
 
@@ -170,7 +180,7 @@ func TestReplaceCurrentBinary_DownloadError(t *testing.T) {
 	}))
 	srv.Close() // closed right away so the HTTP client gets a connection error
 
-	err := ReplaceCurrentBinary(srv.URL + "/archive.tar.gz")
+	err := ReplaceCurrentBinary(srv.URL + testArchivePath)
 	if err == nil {
 		t.Fatal("expected download error")
 	}
@@ -184,13 +194,13 @@ func TestReplaceUnixBinary(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	exePath := filepath.Join(dir, "ai-review")
-	newBinPath := filepath.Join(dir, "ai-review-new")
+	exePath := filepath.Join(dir, testBinName)
+	newBinPath := filepath.Join(dir, testTempPrefix)
 
 	if err := os.WriteFile(exePath, []byte("old-binary"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(newBinPath, []byte("new-binary"), 0755); err != nil {
+	if err := os.WriteFile(newBinPath, []byte(testBinaryContent), 0755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -202,8 +212,8 @@ func TestReplaceUnixBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read replaced binary: %v", err)
 	}
-	if string(data) != "new-binary" {
-		t.Errorf("content: got %q, want %q", data, "new-binary")
+	if string(data) != testBinaryContent {
+		t.Errorf(testContentFmt, data, testBinaryContent)
 	}
 
 	// Verify the replaced binary is executable (regression: CreateTemp
@@ -228,15 +238,15 @@ func TestReplaceUnixBinary_SourcePerm0600(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	exePath := filepath.Join(dir, "ai-review")
-	newBinPath := filepath.Join(dir, "ai-review-new")
+	exePath := filepath.Join(dir, testBinName)
+	newBinPath := filepath.Join(dir, testTempPrefix)
 
 	// Old binary is executable (simulates the currently-installed binary).
 	if err := os.WriteFile(exePath, []byte("old-binary"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	// New binary has 0600 — exactly what os.CreateTemp produces.
-	if err := os.WriteFile(newBinPath, []byte("new-binary"), 0600); err != nil {
+	if err := os.WriteFile(newBinPath, []byte(testBinaryContent), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -248,8 +258,8 @@ func TestReplaceUnixBinary_SourcePerm0600(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read replaced binary: %v", err)
 	}
-	if string(data) != "new-binary" {
-		t.Errorf("content: got %q, want %q", data, "new-binary")
+	if string(data) != testBinaryContent {
+		t.Errorf(testContentFmt, data, testBinaryContent)
 	}
 
 	info, err := os.Stat(exePath)
@@ -272,24 +282,20 @@ func fetchLatestFromURL(apiURL string) (*LatestRelease, error) {
 func TestFetchLatestFromURL_Success(t *testing.T) {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
-	archLabel := goarch
-	if goarch == "amd64" {
-		archLabel = "x86_64"
-	}
-	assetName := fmt.Sprintf("ai-review_%s_%s.tar.gz", goos, archLabel)
+	assetName := fmt.Sprintf("ai-review_%s_%s.tar.gz", goos, goarch)
 	assetURL := "http://example.com/ai-review.tar.gz"
 
-	srv := releaseServer(t, "v3.0.0", []map[string]string{
+	srv := releaseServer(t, testTagV300, []map[string]string{
 		{"name": assetName, "url": assetURL},
 	})
 	defer srv.Close()
 
 	rel, err := fetchLatestFromURL(srv.URL)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(testUnexpectedErr, err)
 	}
-	if rel.Tag != "v3.0.0" {
-		t.Errorf("tag: got %q, want %q", rel.Tag, "v3.0.0")
+	if rel.Tag != testTagV300 {
+		t.Errorf("tag: got %q, want %q", rel.Tag, testTagV300)
 	}
 	if rel.DownloadURL != assetURL {
 		t.Errorf("download URL: got %q, want %q", rel.DownloadURL, assetURL)
@@ -336,7 +342,7 @@ func TestFetchLatestFromURL_BadJSON(t *testing.T) {
 
 func TestExtractFromTarGz_Found(t *testing.T) {
 	binaryName := binaryNameForOS()
-	archive := buildTarGz(t, binaryName, "binary-content")
+	archive := buildTarGz(t, binaryName, testBinContent)
 
 	archivePath := filepath.Join(t.TempDir(), "test.tar.gz")
 	if err := os.WriteFile(archivePath, archive, 0600); err != nil {
@@ -347,8 +353,8 @@ func TestExtractFromTarGz_Found(t *testing.T) {
 	if err := extractFromTarGz(archivePath, binaryName, &out); err != nil {
 		t.Fatalf("extractFromTarGz: %v", err)
 	}
-	if out.String() != "binary-content" {
-		t.Errorf("content: got %q, want %q", out.String(), "binary-content")
+	if out.String() != testBinContent {
+		t.Errorf(testContentFmt, out.String(), testBinContent)
 	}
 }
 
@@ -358,7 +364,7 @@ func TestExtractFromTarGz_NotFound(t *testing.T) {
 	os.WriteFile(archivePath, archive, 0600) //nolint:errcheck
 
 	var out bytes.Buffer
-	err := extractFromTarGz(archivePath, "ai-review", &out)
+	err := extractFromTarGz(archivePath, testBinName, &out)
 	if err == nil {
 		t.Fatal("expected error when binary not in archive")
 	}
@@ -366,7 +372,7 @@ func TestExtractFromTarGz_NotFound(t *testing.T) {
 
 func TestExtractFromTarGz_BadFile(t *testing.T) {
 	var out bytes.Buffer
-	err := extractFromTarGz("/nonexistent/path.tar.gz", "ai-review", &out)
+	err := extractFromTarGz("/nonexistent/path.tar.gz", testBinName, &out)
 	if err == nil {
 		t.Fatal("expected error for missing archive file")
 	}
@@ -377,7 +383,7 @@ func TestExtractFromTarGz_BadGzip(t *testing.T) {
 	os.WriteFile(archivePath, []byte("not-gzip"), 0600) //nolint:errcheck
 
 	var out bytes.Buffer
-	err := extractFromTarGz(archivePath, "ai-review", &out)
+	err := extractFromTarGz(archivePath, testBinName, &out)
 	if err == nil {
 		t.Fatal("expected error for invalid gzip")
 	}
@@ -387,7 +393,7 @@ func TestExtractFromTarGz_BadGzip(t *testing.T) {
 
 func TestExtractFromZip_Found(t *testing.T) {
 	binaryName := binaryNameForOS()
-	archive := buildZip(t, binaryName, "zip-binary-content")
+	archive := buildZip(t, binaryName, testZipBinContent)
 
 	archivePath := filepath.Join(t.TempDir(), "test.zip")
 	if err := os.WriteFile(archivePath, archive, 0600); err != nil {
@@ -398,8 +404,8 @@ func TestExtractFromZip_Found(t *testing.T) {
 	if err := extractFromZip(archivePath, binaryName, &out); err != nil {
 		t.Fatalf("extractFromZip: %v", err)
 	}
-	if out.String() != "zip-binary-content" {
-		t.Errorf("content: got %q, want %q", out.String(), "zip-binary-content")
+	if out.String() != testZipBinContent {
+		t.Errorf(testContentFmt, out.String(), testZipBinContent)
 	}
 }
 
@@ -409,7 +415,7 @@ func TestExtractFromZip_NotFound(t *testing.T) {
 	os.WriteFile(archivePath, archive, 0600) //nolint:errcheck
 
 	var out bytes.Buffer
-	err := extractFromZip(archivePath, "ai-review", &out)
+	err := extractFromZip(archivePath, testBinName, &out)
 	if err == nil {
 		t.Fatal("expected error when binary not in zip")
 	}
@@ -417,7 +423,7 @@ func TestExtractFromZip_NotFound(t *testing.T) {
 
 func TestExtractFromZip_BadFile(t *testing.T) {
 	var out bytes.Buffer
-	err := extractFromZip("/nonexistent/path.zip", "ai-review", &out)
+	err := extractFromZip("/nonexistent/path.zip", testBinName, &out)
 	if err == nil {
 		t.Fatal("expected error for missing zip file")
 	}
@@ -458,7 +464,7 @@ func TestReplaceCurrentBinary_TarGz(t *testing.T) {
 
 	// Create a fake "current executable" so ReplaceCurrentBinary can replace it.
 	dir := t.TempDir()
-	fakeExe := filepath.Join(dir, "ai-review")
+	fakeExe := filepath.Join(dir, testBinName)
 	if err := os.WriteFile(fakeExe, []byte("old"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +485,7 @@ func TestReplaceCurrentBinary_TarGz(t *testing.T) {
 	// function to succeed.
 
 	// The download URL must NOT end in ".zip" to hit the tar.gz path.
-	downloadURL := srv.URL + "/archive.tar.gz"
+	downloadURL := srv.URL + testArchivePath
 
 	err := ReplaceCurrentBinary(downloadURL)
 	// This will try to replace the test binary itself. It may or may not
@@ -492,7 +498,7 @@ func TestReplaceCurrentBinary_TarGz(t *testing.T) {
 			!strings.Contains(err.Error(), "text file busy") &&
 			!strings.Contains(err.Error(), "permission denied") &&
 			!strings.Contains(err.Error(), "operation not permitted") {
-			t.Fatalf("unexpected error: %v", err)
+			t.Fatalf(testUnexpectedErr, err)
 		}
 	}
 }
@@ -520,7 +526,7 @@ func TestReplaceCurrentBinary_Zip(t *testing.T) {
 			!strings.Contains(err.Error(), "text file busy") &&
 			!strings.Contains(err.Error(), "permission denied") &&
 			!strings.Contains(err.Error(), "operation not permitted") {
-			t.Fatalf("unexpected error: %v", err)
+			t.Fatalf(testUnexpectedErr, err)
 		}
 	}
 }
@@ -532,7 +538,7 @@ func TestReplaceCurrentBinary_BadArchiveContent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := ReplaceCurrentBinary(srv.URL + "/archive.tar.gz")
+	err := ReplaceCurrentBinary(srv.URL + testArchivePath)
 	if err == nil {
 		t.Fatal("expected error for invalid archive content")
 	}
@@ -547,7 +553,7 @@ func TestReplaceCurrentBinary_BinaryNotInArchive(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := ReplaceCurrentBinary(srv.URL + "/archive.tar.gz")
+	err := ReplaceCurrentBinary(srv.URL + testArchivePath)
 	if err == nil {
 		t.Fatal("expected error when binary not found in archive")
 	}
@@ -576,7 +582,7 @@ func TestReplaceUnixBinary_BadSourcePath(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	exePath := filepath.Join(dir, "ai-review")
+	exePath := filepath.Join(dir, testBinName)
 	if err := os.WriteFile(exePath, []byte("old"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +599,7 @@ func TestReplaceUnixBinary_BadExeDir(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	newBinPath := filepath.Join(dir, "new-binary")
+	newBinPath := filepath.Join(dir, testBinaryContent)
 	if err := os.WriteFile(newBinPath, []byte("new"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -604,7 +610,7 @@ func TestReplaceUnixBinary_BadExeDir(t *testing.T) {
 		t.Fatal("expected error for nonexistent exe directory")
 	}
 	if !strings.Contains(err.Error(), "create staging file") {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(testUnexpectedErr, err)
 	}
 }
 
@@ -613,7 +619,7 @@ func TestReplaceUnixBinary_BadExeDir(t *testing.T) {
 func TestReplaceWindowsBinary_WritesBatchFile(t *testing.T) {
 	dir := t.TempDir()
 	exePath := filepath.Join(dir, "ai-review.exe")
-	newBinPath := filepath.Join(dir, "ai-review-new")
+	newBinPath := filepath.Join(dir, testTempPrefix)
 
 	// Create dummy files so the function has something to reference.
 	os.WriteFile(exePath, []byte("old"), 0755)   //nolint:errcheck

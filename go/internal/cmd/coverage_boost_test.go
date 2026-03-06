@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -18,11 +19,41 @@ import (
 	"github.com/hiiamtrong/smart-code-review/internal/git"
 )
 
+// ─── test constants ─────────────────────────────────────────────────────────
+
+const (
+	testFileTestGo    = "test.go"
+	testFileMainGo    = "main.go"
+	testPkgMain       = "package main\n"
+	testOutputJSONL   = "output.jsonl"
+	testSevWarning    = "WARNING"
+	testModelGPT4     = "gpt-4"
+	testPreCommitYAML = ".pre-commit-config.yaml"
+	testRulesAuto     = "auto"
+	testAPIKey        = "test-key"
+	testKeyAIModel    = "AI_MODEL"
+	testRepoOwner     = "owner/repo"
+	testReporterLocal = "local"
+	testDiffContent   = "diff content"
+	testErrFmt        = "unexpected error: %v"
+	testGHToken       = "GITHUB_TOKEN"
+	testGHRepo        = "GITHUB_REPOSITORY"
+	testGHTokenVal    = "tok"
+	testCfgDir        = "config"
+	testGoLang        = "go"
+	testGitCmd        = "git"
+	testGitAdd        = "add"
+	testGitCFlag      = "-C"
+	testGitInit       = "init"
+	testGitQuiet      = "--quiet"
+	testInputY        = "y"
+)
+
 // ─── helper: create a minimal git repo ──────────────────────────────────────
 
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	c := exec.Command("git", args...) // nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+	c := exec.Command(testGitCmd, args...) // nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	c.Dir = dir
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -32,13 +63,13 @@ func runGit(t *testing.T, dir string, args ...string) {
 func createTestGitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	runGit(t, dir, "init", "--quiet")
-	runGit(t, dir, "config", "user.email", "test@test.com")
-	runGit(t, dir, "config", "user.name", "Test")
+	runGit(t, dir, testGitInit, testGitQuiet)
+	runGit(t, dir, testCfgDir, "user.email", "test@test.com")
+	runGit(t, dir, testCfgDir, "user.name", "Test")
 	// Create initial commit so HEAD exists
-	os.WriteFile(filepath.Join(dir, "init.txt"), []byte("init"), 0644)
-	runGit(t, dir, "add", ".")
-	runGit(t, dir, "commit", "-m", "init", "--quiet")
+	os.WriteFile(filepath.Join(dir, "init.txt"), []byte(testGitInit), 0644)
+	runGit(t, dir, testGitAdd, ".")
+	runGit(t, dir, "commit", "-m", testGitInit, testGitQuiet)
 	return dir
 }
 
@@ -46,14 +77,14 @@ func writeTestConfig(t *testing.T, homeDir, content string) {
 	t.Helper()
 	configDir := filepath.Join(homeDir, ".config", "ai-review")
 	os.MkdirAll(configDir, 0o755)
-	os.WriteFile(filepath.Join(configDir, "config"), []byte(content), 0o644)
+	os.WriteFile(filepath.Join(configDir, testCfgDir), []byte(content), 0o644)
 }
 
 // ─── ciWriteOutputs ─────────────────────────────────────────────────────────
 
 func TestCiWriteOutputs_Success(t *testing.T) {
 	tmp := t.TempDir()
-	outFile := filepath.Join(tmp, "output.jsonl")
+	outFile := filepath.Join(tmp, testOutputJSONL)
 	overviewFile := filepath.Join(tmp, "overview.txt")
 
 	result := &gateway.ReviewResult{
@@ -61,9 +92,9 @@ func TestCiWriteOutputs_Success(t *testing.T) {
 		Diagnostics: []gateway.Diagnostic{
 			{
 				Message:  "test issue",
-				Severity: "WARNING",
+				Severity: testSevWarning,
 				Location: gateway.Location{
-					Path:  "main.go",
+					Path:  testFileMainGo,
 					Range: gateway.Range{Start: gateway.Position{Line: 10}},
 				},
 			},
@@ -91,7 +122,7 @@ func TestCiWriteOutputs_Success(t *testing.T) {
 
 func TestCiWriteOutputs_NoOverview(t *testing.T) {
 	tmp := t.TempDir()
-	outFile := filepath.Join(tmp, "output.jsonl")
+	outFile := filepath.Join(tmp, testOutputJSONL)
 	overviewFile := filepath.Join(tmp, "overview.txt")
 
 	result := &gateway.ReviewResult{
@@ -110,9 +141,13 @@ func TestCiWriteOutputs_NoOverview(t *testing.T) {
 }
 
 func TestCiWriteOutputs_BadPath(t *testing.T) {
-	// Use a path that can't be created
+	// Use a path whose parent directory doesn't exist and can't be created.
+	badPath := filepath.Join(string(filepath.Separator), "nonexistent-dir-"+t.Name(), "sub", testOutputJSONL)
+	if runtime.GOOS == "windows" {
+		badPath = `Q:\nonexistent\path\output.jsonl`
+	}
 	result := &gateway.ReviewResult{}
-	err := ciWriteOutputs(result, "/dev/null/impossible/path/output.jsonl", "")
+	err := ciWriteOutputs(result, badPath, "")
 	if err == nil {
 		t.Error("expected error for bad output path")
 	}
@@ -121,44 +156,49 @@ func TestCiWriteOutputs_BadPath(t *testing.T) {
 // ─── ciRunReviewdog ─────────────────────────────────────────────────────────
 
 func TestCiRunReviewdog_NoReviewdog(t *testing.T) {
-	// reviewdog binary likely not installed in test env
-	// This should just log a warning and not panic
-	tmp := t.TempDir()
-	outFile := filepath.Join(tmp, "output.jsonl")
+	// Use manual temp dir to avoid Windows file-locking issues with t.TempDir().
+	tmp, err := os.MkdirTemp("", "reviewdog-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmp)
+
+	outFile := filepath.Join(tmp, testOutputJSONL)
 	os.WriteFile(outFile, []byte("{}"), 0644)
 
 	result := &gateway.ReviewResult{
 		Diagnostics: []gateway.Diagnostic{
-			{Severity: "WARNING", Message: "test"},
+			{Severity: testSevWarning, Message: "test"},
 		},
 	}
 
-	// This should not panic (reviewdog not found => logs warning)
-	ciRunReviewdog(result, outFile, "local")
+	ciRunReviewdog(result, outFile, testReporterLocal)
 }
 
 func TestCiRunReviewdog_NoReviewdog_WithErrors(t *testing.T) {
-	// When reviewdog fails AND there are ERROR diagnostics, ciRunReviewdog calls os.Exit(1).
-	// We can't easily test os.Exit, but we can test the non-exit path.
-	tmp := t.TempDir()
-	outFile := filepath.Join(tmp, "output.jsonl")
+	tmp, err := os.MkdirTemp("", "reviewdog-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmp)
+
+	outFile := filepath.Join(tmp, testOutputJSONL)
 	os.WriteFile(outFile, []byte("{}"), 0644)
 
 	result := &gateway.ReviewResult{
 		Diagnostics: []gateway.Diagnostic{
-			{Severity: "WARNING", Message: "just a warning"},
+			{Severity: testSevWarning, Message: "just a warning"},
 		},
 	}
 
-	// No ERROR diagnostics, so no os.Exit
-	ciRunReviewdog(result, outFile, "local")
+	ciRunReviewdog(result, outFile, testReporterLocal)
 }
 
 // ─── ciPostPRComment ────────────────────────────────────────────────────────
 
 func TestCiPostPRComment_EmptyOverview(t *testing.T) {
-	t.Setenv("GITHUB_TOKEN", "tok")
-	t.Setenv("GITHUB_REPOSITORY", "owner/repo")
+	t.Setenv(testGHToken, testGHTokenVal)
+	t.Setenv(testGHRepo, testRepoOwner)
 
 	result := &gateway.ReviewResult{Overview: ""}
 	ciPostPRComment(result, git.GitInfo{PRNumber: "1"})
@@ -166,8 +206,8 @@ func TestCiPostPRComment_EmptyOverview(t *testing.T) {
 }
 
 func TestCiPostPRComment_EmptyPRNumber(t *testing.T) {
-	t.Setenv("GITHUB_TOKEN", "tok")
-	t.Setenv("GITHUB_REPOSITORY", "owner/repo")
+	t.Setenv(testGHToken, testGHTokenVal)
+	t.Setenv(testGHRepo, testRepoOwner)
 
 	result := &gateway.ReviewResult{Overview: "Some overview"}
 	ciPostPRComment(result, git.GitInfo{PRNumber: ""})
@@ -192,8 +232,8 @@ func TestCiPostPRComment_WithMockServer(t *testing.T) {
 
 	// ciPostPRComment uses hardcoded GitHub API URLs, so we can't easily redirect.
 	// But we can test with env vars set to trigger the "post" path that fails gracefully.
-	t.Setenv("GITHUB_TOKEN", "test-token")
-	t.Setenv("GITHUB_REPOSITORY", "owner/repo")
+	t.Setenv(testGHToken, "test-token")
+	t.Setenv(testGHRepo, testRepoOwner)
 
 	result := &gateway.ReviewResult{Overview: "Test overview"}
 	// This will fail because it hits real GitHub API, but should not panic.
@@ -218,7 +258,7 @@ func TestRunCIReview_NoCredentials_Defaults(t *testing.T) {
 		t.Error("expected error when credentials are empty defaults")
 	}
 	if !strings.Contains(err.Error(), "not configured") {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(testErrFmt, err)
 	}
 }
 
@@ -245,7 +285,7 @@ AI_GATEWAY_API_KEY=""`)
 		t.Error("expected error when credentials missing")
 	}
 	if !strings.Contains(err.Error(), "not configured") {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(testErrFmt, err)
 	}
 }
 
@@ -279,8 +319,8 @@ func TestRunCIReview_WithMockGateway(t *testing.T) {
 			Diagnostics: []gateway.Diagnostic{
 				{
 					Message:  "test issue",
-					Severity: "WARNING",
-					Location: gateway.Location{Path: "test.go", Range: gateway.Range{Start: gateway.Position{Line: 1}}},
+					Severity: testSevWarning,
+					Location: gateway.Location{Path: testFileTestGo, Range: gateway.Range{Start: gateway.Position{Line: 1}}},
 				},
 			},
 		}
@@ -303,9 +343,9 @@ AI_GATEWAY_API_KEY="test-key"
 GATEWAY_TIMEOUT_SEC="10"`, server.URL))
 
 	// Create a diff by adding a file
-	os.WriteFile(filepath.Join(repoDir, "test.go"), []byte("package main\n"), 0644)
-	exec.Command("git", "-C", repoDir, "add", ".").Run()
-	exec.Command("git", "-C", repoDir, "commit", "-m", "add test", "--quiet").Run()
+	os.WriteFile(filepath.Join(repoDir, testFileTestGo), []byte(testPkgMain), 0644)
+	exec.Command(testGitCmd, testGitCFlag, repoDir, testGitAdd, ".").Run()
+	exec.Command(testGitCmd, testGitCFlag, repoDir, "commit", "-m", "add test", testGitQuiet).Run()
 
 	t.Setenv("GITHUB_BASE_REF", "")
 
@@ -315,7 +355,7 @@ GATEWAY_TIMEOUT_SEC="10"`, server.URL))
 	origReporter := ciReporter
 	ciOutputFile = filepath.Join(tmp, "ai-output.jsonl")
 	ciOverviewFile = filepath.Join(tmp, "ai-overview.txt")
-	ciReporter = "local"
+	ciReporter = testReporterLocal
 	defer func() {
 		ciOutputFile = origOutput
 		ciOverviewFile = origOverview
@@ -392,7 +432,7 @@ AI_GATEWAY_API_KEY="key"`)
     hooks:
       - id: trailing-whitespace
 `
-	os.WriteFile(filepath.Join(repoDir, ".pre-commit-config.yaml"), []byte(pcConfig), 0644)
+	os.WriteFile(filepath.Join(repoDir, testPreCommitYAML), []byte(pcConfig), 0644)
 
 	err := runInstall(nil, nil)
 	if err != nil {
@@ -426,7 +466,7 @@ func TestInstallViaPreCommitFramework_AlreadyInstalled(t *testing.T) {
         pass_filenames: false
         stages: [commit]
 `
-	os.WriteFile(filepath.Join(repoDir, ".pre-commit-config.yaml"), []byte(pcConfig), 0644)
+	os.WriteFile(filepath.Join(repoDir, testPreCommitYAML), []byte(pcConfig), 0644)
 
 	err := installViaPreCommitFramework(repoDir)
 	if err != nil {
@@ -446,7 +486,7 @@ func TestInstallViaPreCommitFramework_Fresh(t *testing.T) {
     hooks:
       - id: trailing-whitespace
 `
-	os.WriteFile(filepath.Join(repoDir, ".pre-commit-config.yaml"), []byte(pcConfig), 0644)
+	os.WriteFile(filepath.Join(repoDir, testPreCommitYAML), []byte(pcConfig), 0644)
 
 	err := installViaPreCommitFramework(repoDir)
 	if err != nil {
@@ -522,7 +562,7 @@ AI_GATEWAY_API_KEY="key"`)
         pass_filenames: false
         stages: [commit]
 `
-	os.WriteFile(filepath.Join(repoDir, ".pre-commit-config.yaml"), []byte(pcConfig), 0644)
+	os.WriteFile(filepath.Join(repoDir, testPreCommitYAML), []byte(pcConfig), 0644)
 
 	err := runUninstall(nil, nil)
 	if err != nil {
@@ -552,7 +592,7 @@ func TestHookPrepareDiff_WithStagedChanges(t *testing.T) {
 
 	// Create and stage a file
 	os.WriteFile(filepath.Join(repoDir, "hello.go"), []byte("package main\n\nfunc hello() {}\n"), 0644)
-	exec.Command("git", "-C", repoDir, "add", "hello.go").Run()
+	exec.Command(testGitCmd, testGitCFlag, repoDir, testGitAdd, "hello.go").Run()
 
 	rawDiff, annotated, lang, repoRoot, gitInfo := hookPrepareDiff()
 	if rawDiff == "" {
@@ -582,7 +622,7 @@ func TestHookPrepareDiff_AllIgnored(t *testing.T) {
 
 	// Stage a .txt file
 	os.WriteFile(filepath.Join(repoDir, "data.txt"), []byte("hello\n"), 0644)
-	exec.Command("git", "-C", repoDir, "add", "data.txt").Run()
+	exec.Command(testGitCmd, testGitCFlag, repoDir, testGitAdd, "data.txt").Run()
 
 	rawDiff, _, _, _, _ := hookPrepareDiff()
 	if rawDiff != "" {
@@ -608,7 +648,7 @@ func TestHookRunSemgrep_NoSemgrep(t *testing.T) {
 	// Semgrep likely not installed in test environment
 	cfg := config.Defaults()
 	cfg.EnableSemgrep = true
-	cfg.SemgrepRules = "auto"
+	cfg.SemgrepRules = testRulesAuto
 
 	diff := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n+package main\n"
 	counts := hookRunSemgrep(cfg, t.TempDir(), diff)
@@ -621,7 +661,7 @@ func TestHookRunSemgrep_NoSemgrep(t *testing.T) {
 
 func TestHookRunSemgrep_EmptyFiles(t *testing.T) {
 	cfg := config.Defaults()
-	cfg.SemgrepRules = "auto"
+	cfg.SemgrepRules = testRulesAuto
 
 	counts := hookRunSemgrep(cfg, t.TempDir(), "")
 	if counts.errCount != 0 {
@@ -636,7 +676,7 @@ func TestHookRunSonarQube_NoScanner(t *testing.T) {
 	cfg.EnableSonarQube = true
 	cfg.SonarHostURL = "http://localhost:9000"
 	cfg.SonarToken = "test-token"
-	cfg.SonarProjectKey = "test-key"
+	cfg.SonarProjectKey = testAPIKey
 
 	diff := "diff --git a/main.go b/main.go\n"
 	counts := hookRunSonarQube(cfg, t.TempDir(), diff)
@@ -659,11 +699,11 @@ func TestHookRunAIReview_GatewayError(t *testing.T) {
 
 	cfg := config.Defaults()
 	cfg.AIGatewayURL = server.URL
-	cfg.AIGatewayAPIKey = "test-key"
+	cfg.AIGatewayAPIKey = testAPIKey
 	cfg.GatewayTimeoutSec = 5
 	cfg.BlockOnGatewayError = false
 
-	counts, result := hookRunAIReview(cfg, "diff content", "go", git.GitInfo{})
+	counts, result := hookRunAIReview(cfg, testDiffContent, testGoLang, git.GitInfo{})
 	if result != nil {
 		t.Error("expected nil result on gateway error")
 	}
@@ -681,11 +721,11 @@ func TestHookRunAIReview_GatewayErrorBlocking(t *testing.T) {
 
 	cfg := config.Defaults()
 	cfg.AIGatewayURL = server.URL
-	cfg.AIGatewayAPIKey = "test-key"
+	cfg.AIGatewayAPIKey = testAPIKey
 	cfg.GatewayTimeoutSec = 5
 	cfg.BlockOnGatewayError = true
 
-	counts, result := hookRunAIReview(cfg, "diff content", "go", git.GitInfo{})
+	counts, result := hookRunAIReview(cfg, testDiffContent, testGoLang, git.GitInfo{})
 	if result != nil {
 		t.Error("expected nil result on gateway error")
 	}
@@ -703,18 +743,18 @@ func TestHookRunAIReview_GatewaySuccess(t *testing.T) {
 			Diagnostics: []gateway.Diagnostic{
 				{
 					Message:  "possible issue",
-					Severity: "WARNING",
-					Location: gateway.Location{Path: "main.go", Range: gateway.Range{Start: gateway.Position{Line: 5}}},
+					Severity: testSevWarning,
+					Location: gateway.Location{Path: testFileMainGo, Range: gateway.Range{Start: gateway.Position{Line: 5}}},
 				},
 				{
 					Message:  "error found",
 					Severity: "ERROR",
-					Location: gateway.Location{Path: "main.go", Range: gateway.Range{Start: gateway.Position{Line: 10}}},
+					Location: gateway.Location{Path: testFileMainGo, Range: gateway.Range{Start: gateway.Position{Line: 10}}},
 				},
 				{
 					Message:  "info note",
 					Severity: "INFO",
-					Location: gateway.Location{Path: "main.go", Range: gateway.Range{Start: gateway.Position{Line: 15}}},
+					Location: gateway.Location{Path: testFileMainGo, Range: gateway.Range{Start: gateway.Position{Line: 15}}},
 				},
 			},
 		}
@@ -725,10 +765,10 @@ func TestHookRunAIReview_GatewaySuccess(t *testing.T) {
 
 	cfg := config.Defaults()
 	cfg.AIGatewayURL = server.URL
-	cfg.AIGatewayAPIKey = "test-key"
+	cfg.AIGatewayAPIKey = testAPIKey
 	cfg.GatewayTimeoutSec = 10
 
-	counts, result := hookRunAIReview(cfg, "diff content", "go", git.GitInfo{})
+	counts, result := hookRunAIReview(cfg, testDiffContent, testGoLang, git.GitInfo{})
 	// We primarily want coverage of the success paths. The result may or may
 	// not be nil depending on SSE fallback timing, so just verify no panic.
 	_ = counts
@@ -755,8 +795,8 @@ ENABLE_SONARQUBE="false"
 ENABLE_SEMGREP="false"`)
 
 	// Stage a file
-	os.WriteFile(filepath.Join(repoDir, "test.go"), []byte("package main\n"), 0644)
-	exec.Command("git", "-C", repoDir, "add", "test.go").Run()
+	os.WriteFile(filepath.Join(repoDir, testFileTestGo), []byte(testPkgMain), 0644)
+	exec.Command(testGitCmd, testGitCFlag, repoDir, testGitAdd, testFileTestGo).Run()
 
 	err := runHook(nil, nil)
 	// Should succeed (gateway error non-blocking)
@@ -783,8 +823,8 @@ ENABLE_SONARQUBE="false"
 ENABLE_SEMGREP="true"
 SEMGREP_RULES="auto"`)
 
-	os.WriteFile(filepath.Join(repoDir, "test.go"), []byte("package main\n"), 0644)
-	exec.Command("git", "-C", repoDir, "add", "test.go").Run()
+	os.WriteFile(filepath.Join(repoDir, testFileTestGo), []byte(testPkgMain), 0644)
+	exec.Command(testGitCmd, testGitCFlag, repoDir, testGitAdd, testFileTestGo).Run()
 
 	err := runHook(nil, nil)
 	_ = err // Just for coverage
@@ -810,8 +850,8 @@ SONAR_TOKEN="test-token"
 SONAR_PROJECT_KEY="test-key"
 ENABLE_SEMGREP="false"`)
 
-	os.WriteFile(filepath.Join(repoDir, "test.go"), []byte("package main\n"), 0644)
-	exec.Command("git", "-C", repoDir, "add", "test.go").Run()
+	os.WriteFile(filepath.Join(repoDir, testFileTestGo), []byte(testPkgMain), 0644)
+	exec.Command(testGitCmd, testGitCFlag, repoDir, testGitAdd, testFileTestGo).Run()
 
 	err := runHook(nil, nil)
 	_ = err // Just for coverage
@@ -844,8 +884,8 @@ BLOCK_ON_GATEWAY_ERROR="false"
 ENABLE_SONARQUBE="false"
 ENABLE_SEMGREP="false"`, server.URL))
 
-	os.WriteFile(filepath.Join(repoDir, "test.go"), []byte("package main\n"), 0644)
-	exec.Command("git", "-C", repoDir, "add", "test.go").Run()
+	os.WriteFile(filepath.Join(repoDir, testFileTestGo), []byte(testPkgMain), 0644)
+	exec.Command(testGitCmd, testGitCFlag, repoDir, testGitAdd, testFileTestGo).Run()
 
 	err := runHook(nil, nil)
 	if err != nil {
@@ -877,8 +917,8 @@ BLOCK_ON_GATEWAY_ERROR="true"
 ENABLE_SONARQUBE="false"
 ENABLE_SEMGREP="false"`, server.URL))
 
-	os.WriteFile(filepath.Join(repoDir, "test.go"), []byte("package main\n"), 0644)
-	exec.Command("git", "-C", repoDir, "add", "test.go").Run()
+	os.WriteFile(filepath.Join(repoDir, testFileTestGo), []byte(testPkgMain), 0644)
+	exec.Command(testGitCmd, testGitCFlag, repoDir, testGitAdd, testFileTestGo).Run()
 
 	err := runHook(nil, nil)
 	// Gateway returns 500 + BlockOnGatewayError=true => errBlocked
@@ -910,7 +950,7 @@ func TestRunUpdate_AlreadyUpToDate(t *testing.T) {
 		return
 	}
 	if !strings.Contains(err.Error(), "check for updates") {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(testErrFmt, err)
 	}
 }
 
@@ -954,7 +994,7 @@ func TestRunConfigSet_ProjectFlag_InGitRepo(t *testing.T) {
 		configGlobalFlag = origGlobal
 	}()
 
-	err := runConfigSet("AI_MODEL", "gpt-4")
+	err := runConfigSet(testKeyAIModel, testModelGPT4)
 	if err != nil {
 		t.Errorf("runConfigSet --project in git repo should succeed: %v", err)
 	}
@@ -976,7 +1016,7 @@ func TestRunConfigSet_AutoDetectProject(t *testing.T) {
 	origGlobal := configGlobalFlag
 	configProjectFlag = true
 	configGlobalFlag = false
-	_ = runConfigSet("AI_MODEL", "gpt-4") // create project config
+	_ = runConfigSet(testKeyAIModel, testModelGPT4) // create project config
 	configProjectFlag = false
 	defer func() {
 		configProjectFlag = origProject
@@ -984,7 +1024,7 @@ func TestRunConfigSet_AutoDetectProject(t *testing.T) {
 	}()
 
 	// Now auto-detect should find project config
-	err := runConfigSet("AI_MODEL", "claude-3")
+	err := runConfigSet(testKeyAIModel, "claude-3")
 	if err != nil {
 		t.Errorf("runConfigSet auto-detect project: %v", err)
 	}
@@ -1000,14 +1040,14 @@ func TestRunConfigListProjects_WithProjects(t *testing.T) {
 	for _, name := range []string{"proj1", "proj2"} {
 		dir := filepath.Join(projectsDir, name)
 		os.MkdirAll(dir, 0o755)
-		os.WriteFile(filepath.Join(dir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
+		os.WriteFile(filepath.Join(dir, testCfgDir), []byte(`AI_MODEL="gpt-4"`), 0o644)
 		os.WriteFile(filepath.Join(dir, "repo-path"), []byte("/path/to/"+name), 0o644)
 	}
 
 	// Also create one without repo-path
 	dir := filepath.Join(projectsDir, "proj3")
 	os.MkdirAll(dir, 0o755)
-	os.WriteFile(filepath.Join(dir, "config"), []byte(`AI_MODEL="gpt-4"`), 0o644)
+	os.WriteFile(filepath.Join(dir, testCfgDir), []byte(`AI_MODEL="gpt-4"`), 0o644)
 
 	err := runConfigListProjects()
 	if err != nil {
@@ -1042,7 +1082,7 @@ func TestRunConfigGet_DefaultsOnly(t *testing.T) {
 	os.Chdir(tmp)
 
 	// LoadMerged never errors; returns defaults
-	err := runConfigGet("AI_MODEL")
+	err := runConfigGet(testKeyAIModel)
 	if err != nil {
 		t.Errorf("runConfigGet with defaults should succeed: %v", err)
 	}
@@ -1056,7 +1096,7 @@ func TestRunConfigGet_GlobalFlag_NoConfig(t *testing.T) {
 	defer func() { configGlobalFlag = origGlobal }()
 
 	// No global config file, but should still work using defaults
-	err := runConfigGet("AI_MODEL")
+	err := runConfigGet(testKeyAIModel)
 	if err != nil {
 		t.Errorf("runConfigGet --global with no config file should use defaults: %v", err)
 	}
@@ -1155,7 +1195,7 @@ func TestSetupStepSemgrep_Enabled_Default(t *testing.T) {
 	reader := bufio.NewReader(strings.NewReader("\n"))
 	setupStepSemgrep(reader, cfg)
 
-	if cfg.SemgrepRules != "auto" {
+	if cfg.SemgrepRules != testRulesAuto {
 		t.Errorf("SemgrepRules = %q, want auto", cfg.SemgrepRules)
 	}
 }
@@ -1180,9 +1220,9 @@ func TestPrintSetupSummary_AllEnabled(t *testing.T) {
 	cfg.AIGatewayURL = "http://localhost"
 	cfg.AIGatewayAPIKey = "key"
 	cfg.SonarHostURL = "http://sonar"
-	cfg.SonarToken = "tok"
+	cfg.SonarToken = testGHTokenVal
 	cfg.SonarProjectKey = "proj"
-	cfg.SemgrepRules = "auto"
+	cfg.SemgrepRules = testRulesAuto
 
 	// Should not panic
 	printSetupSummary(cfg)
@@ -1214,7 +1254,7 @@ func TestRunConfigRemoveProject_EmptyID_InGitRepo(t *testing.T) {
 	origGlobal := configGlobalFlag
 	configProjectFlag = true
 	configGlobalFlag = false
-	_ = config.SaveProjectField("AI_MODEL", "gpt-4")
+	_ = config.SaveProjectField(testKeyAIModel, testModelGPT4)
 	configProjectFlag = origProject
 	configGlobalFlag = origGlobal
 
@@ -1247,7 +1287,7 @@ func TestPrintProjectInfo_InGitRepo(t *testing.T) {
 	os.Chdir(repoDir)
 
 	// Create project config
-	_ = config.SaveProjectField("AI_MODEL", "gpt-4")
+	_ = config.SaveProjectField(testKeyAIModel, testModelGPT4)
 
 	// Should not panic
 	printProjectInfo()
@@ -1274,7 +1314,7 @@ func TestSaveToGlobal_DefaultsOnly(t *testing.T) {
 	os.Chdir(tmp)
 
 	// LoadMerged returns defaults; Save creates the config dir/file
-	err := saveToGlobal("AI_MODEL", "gpt-4")
+	err := saveToGlobal(testKeyAIModel, testModelGPT4)
 	if err != nil {
 		t.Errorf("saveToGlobal with defaults should succeed: %v", err)
 	}
@@ -1313,14 +1353,14 @@ func TestRunSetup_WithSemgrep(t *testing.T) {
 	readPasswordFn = func() (string, error) { return "test-api-key", nil }
 
 	input := strings.Join([]string{
-		"y",                  // Enable AI Review
+		testInputY,           // Enable AI Review
 		"n",                  // Enable SonarQube
-		"y",                  // Enable Semgrep
+		testInputY,           // Enable Semgrep
 		"https://gw.test",   // AI Gateway URL
 		"",                   // AI Model (default)
 		"",                   // AI Provider (default)
 		"p/default",          // Semgrep Rules
-		"y",                  // Save configuration
+		testInputY,           // Save configuration
 	}, "\n") + "\n"
 
 	origStdin := os.Stdin
@@ -1363,7 +1403,7 @@ AI_GATEWAY_URL="http://localhost:9999"
 AI_GATEWAY_API_KEY="key"`)
 
 	// Create project config
-	_ = config.SaveProjectField("AI_MODEL", "custom-model")
+	_ = config.SaveProjectField(testKeyAIModel, "custom-model")
 
 	err := runStatus(nil, nil)
 	if err != nil {
