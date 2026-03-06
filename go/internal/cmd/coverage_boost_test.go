@@ -349,12 +349,20 @@ GATEWAY_TIMEOUT_SEC="10"`, server.URL))
 
 	t.Setenv("GITHUB_BASE_REF", "")
 
+	// Use manual temp dir for CI output files to avoid Windows file-locking
+	// issues with t.TempDir() cleanup (reviewdog may still hold the file).
+	ciTmp, err := os.MkdirTemp("", "ci-review-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(ciTmp)
+
 	// Save and restore ciOutputFile/ciOverviewFile
 	origOutput := ciOutputFile
 	origOverview := ciOverviewFile
 	origReporter := ciReporter
-	ciOutputFile = filepath.Join(tmp, "ai-output.jsonl")
-	ciOverviewFile = filepath.Join(tmp, "ai-overview.txt")
+	ciOutputFile = filepath.Join(ciTmp, "ai-output.jsonl")
+	ciOverviewFile = filepath.Join(ciTmp, "ai-overview.txt")
 	ciReporter = testReporterLocal
 	defer func() {
 		ciOutputFile = origOutput
@@ -362,7 +370,7 @@ GATEWAY_TIMEOUT_SEC="10"`, server.URL))
 		ciReporter = origReporter
 	}()
 
-	err := runCIReview(nil, nil)
+	err = runCIReview(nil, nil)
 	// May return nil or error depending on git state; we just want coverage
 	_ = err
 }
