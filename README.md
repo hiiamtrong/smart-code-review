@@ -1,406 +1,104 @@
-# Smart Code Review GitHub Action
+# AI Review — Pre-commit Code Quality Hook
 
-**AI-Powered Code Review with Language Detection and Linting Integration**
+Automatically runs Semgrep, SonarQube, and AI code review on your staged changes before each commit.
 
-This GitHub Action automatically detects your project's language/framework and combines traditional linting tools with AI-powered code review using [reviewdog](https://github.com/reviewdog/reviewdog) for seamless PR integration.
+## Prerequisites
 
-## Features
+Install these before setting up:
 
-- **Language Detection**: Automatically detects project type based on configuration files
-- **AI-Powered Review**: Intelligent code analysis using configurable AI models
-- **SonarQube Integration**: Combine static analysis with AI review ([Setup Guide](SONARQUBE_INTEGRATION.md))
-- **Traditional Linting**: Integrates with popular linters for each language
-- **Smart Diff Analysis**: Reviews only changes in PRs or since last push
-- **Inline Comments**: Posts review comments directly on PR lines
-- **Configurable**: Flexible AI model and provider selection
+- **Java 17+** — required for SonarQube scanner
+  - macOS: `brew install openjdk@17`
+  - Linux: `sudo apt install openjdk-17-jdk`
+  - Windows: `winget install EclipseAdoptium.Temurin.17.JDK`
+- **SonarQube Scanner CLI**
+  - macOS: `brew install sonar-scanner`
+  - Others: [download](https://docs.sonarsource.com/sonarqube/latest/analyzing-source-code/scanners/sonarscanner/)
+- **Semgrep** *(optional, only if enabling Semgrep analysis)*
+  - `pip install semgrep` or `brew install semgrep`
 
-## Supported Languages & Tools
+## Installation
 
-| Language               | Linters                     | AI Review |
-| ---------------------- | --------------------------- | --------- |
-| **Node.js/TypeScript** | ESLint                      | Yes       |
-| **Python**             | ruff → flake8 → pylint      | Yes       |
-| **Java**               | Checkstyle (Maven/Gradle)   | Yes       |
-| **Go**                 | staticcheck → golangci-lint | Yes       |
-| **.NET**               | dotnet format               | Yes       |
+**Step 1 — Install the CLI:**
 
-## Quick Start
+```bash
+# macOS / Linux
+curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.sh | bash
 
-### Basic Usage
-
-```yaml
-name: Code Review
-
-on:
-  pull_request:
-    types: [opened, synchronize]
-
-jobs:
-  code-review:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      checks: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Run Smart Code Review
-        uses: hiiamtrong/smart-code-review@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          ai_gateway_url: ${{ secrets.AI_GATEWAY_URL }}
-          ai_gateway_api_key: ${{ secrets.AI_GATEWAY_API_KEY }}
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.ps1 | iex
 ```
 
-### Advanced Configuration
+Restart terminal after install.
 
-```yaml
-      - name: Run Smart Code Review
-        uses: hiiamtrong/smart-code-review@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          ai_gateway_url: ${{ secrets.AI_GATEWAY_URL }}
-          ai_gateway_api_key: ${{ secrets.AI_GATEWAY_API_KEY }}
-          ai_model: "claude-3-sonnet"     # Optional: AI model selection
-          ai_provider: "anthropic"        # Optional: AI provider selection
+**Step 2 — Configure (once per machine):**
+
+```bash
+ai-review setup
+```
+
+**Step 3 — Install hook into a project:**
+
+```bash
+cd /path/to/your-repo
+ai-review install
+```
+
+You will be prompted for the SonarQube Project Key — defaults to the repo directory name.
+
+## Usage
+
+Commit as normal. The hook runs automatically:
+
+```bash
+git add .
+git commit -m "feat: your change"
+```
+
+To bypass in emergencies:
+
+```bash
+git commit --no-verify -m "hotfix"
 ```
 
 ## Configuration
 
-### Ignore Files from Review
+```bash
+ai-review config show                          # view current config
+ai-review config set KEY VALUE                 # update a value
+ai-review uninstall                            # remove hook from repo
+ai-review update                               # update to latest version
+```
 
-Create a `.aireviewignore` file in your repository root to exclude files from AI review:
+Common settings:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ENABLE_AI_REVIEW` | `true` | Enable AI gateway review |
+| `ENABLE_SONARQUBE_LOCAL` | `true` | Enable SonarQube analysis |
+| `ENABLE_SEMGREP` | `false` | Enable Semgrep analysis |
+| `SONAR_BLOCK_ON_HOTSPOTS` | `true` | Block commit on security hotspots |
+| `SONAR_FILTER_CHANGED_LINES_ONLY` | `true` | Only report issues on changed lines |
+| `BLOCK_ON_GATEWAY_ERROR` | `true` | Block commit if AI gateway is unreachable |
+
+## Ignore files
+
+Create `.aireviewignore` in your repo root (same syntax as `.gitignore`):
 
 ```gitignore
-# Dependencies and lock files
-package-lock.json
-yarn.lock
-*.lock
-
-# Build outputs
-dist/*
-build/*
+dist/
+build/
+node_modules/
+vendor/
 *.min.js
-
-# Generated files
-*.generated.*
-
-# Documentation
 *.md
-docs/*
 ```
 
-The syntax is similar to `.gitignore`:
-- Use `*` for wildcards: `*.test.js`
-- Use `**` for directory matching: `**/fixtures/*`
-- Use `#` for comments
-- One pattern per line
-
-### Required Inputs
-
-| Input                | Description                  | Example                                  |
-| -------------------- | ---------------------------- | ---------------------------------------- |
-| `github_token`       | GitHub token for PR comments | `${{ secrets.GITHUB_TOKEN }}`            |
-| `ai_gateway_url`     | AI Gateway service endpoint  | `https://gateway.example.com/api/review` |
-| `ai_gateway_api_key` | API key for AI Gateway       | `${{ secrets.AI_GATEWAY_API_KEY }}`      |
-
-### Optional Inputs
-
-| Input         | Description     | Default            |
-| ------------- | --------------- | ------------------ |
-| `ai_model`    | AI model to use | `gemini-2.0-flash` |
-| `ai_provider` | AI provider     | `google`           |
-
-### Required Repository Settings
-
-1. **Workflow Permissions**:
-   ```yaml
-   permissions:
-     contents: read
-     pull-requests: write
-     checks: write
-   ```
-
-2. **Repository Settings**:
-   - Go to Settings → Actions → General
-   - Set "Workflow permissions" to "Read and write permissions"
-
-### Required Secrets
-
-Add these secrets to your repository (Settings → Secrets and variables → Actions):
-
-- `AI_GATEWAY_URL`: Your AI Gateway service endpoint
-- `AI_GATEWAY_API_KEY`: Authentication key for your AI Gateway
-
-## How It Works
-
-1. **Language Detection**: Analyzes project files to identify the primary language
-2. **Traditional Linting**: Runs appropriate linters (ESLint, ruff, etc.)
-3. **Smart Diff Analysis**:
-   - **PRs**: Reviews all changes against base branch
-   - **Direct pushes**: Reviews only unpushed changes
-4. **AI Analysis**: Sends diff to AI Gateway for intelligent review
-5. **PR Integration**: Posts findings as inline comments via reviewdog
-
-## Local Development & Testing
-
-### Prerequisites
-
-**Required:**
-
-- `git`
-- `Java 17+` — required for SonarQube scanner ([Adoptium](https://adoptium.net/temurin/releases/?version=17))
-- `sonar-scanner` CLI — `brew install sonar-scanner` (macOS) or [download](https://docs.sonarsource.com/sonarqube/latest/analyzing-source-code/scanners/sonarscanner/)
-
-**Optional (if enabling Semgrep):**
-
-- `semgrep` — `pip install semgrep` or `brew install semgrep`
-
-### Testing Locally
-
-```bash
-# Install the binary first (see Local Installation below)
-
-# Set credentials
-ai-review setup
-
-# Run the hook manually against your staged changes
-ai-review run-hook
-
-# Check installation status
-ai-review status
-```
-
-## Local Installation (Git Hook)
-
-You can install AI Review as a git pre-commit hook to automatically review code before each commit.
-
-### Installation
-
-**macOS / Linux / WSL:**
-```bash
-# Option 1: Run installer directly from repo
-git clone https://github.com/hiiamtrong/smart-code-review.git
-cd smart-code-review
-bash scripts/local/install.sh
-
-# Option 2: One-line install (when published)
-curl -sSL https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.sh | bash
-```
-
-**Windows (Git Bash, PowerShell, or CMD):**
-```bash
-# Option 1: Git Bash (recommended)
-bash scripts/local/install.sh
-```
-
-```powershell
-# Option 2: PowerShell
-powershell -ExecutionPolicy Bypass -File scripts/local/install.ps1
-```
-
-```powershell
-# Option 3: One-line install (PowerShell)
-irm https://raw.githubusercontent.com/hiiamtrong/smart-code-review/main/scripts/local/install.ps1 | iex
-```
-
-**Windows + SonarQube:** Java 11+ is required. Install via `winget install EclipseAdoptium.Temurin.17.JDK` or `choco install temurin17`. See [SETUP_GUIDE.md](SETUP_GUIDE.md) for details.
-
-**Supported Windows shells:** Git Bash, PowerShell, CMD (via wrapper scripts), and WSL (uses Linux install).
-
-The installer will:
-1. Install required dependencies (jq)
-2. Prompt for your AI Gateway credentials
-3. Set up the CLI tool and hook scripts
-4. Add `~/.local/bin` to your PATH
-
-**Optional:** For `ai-review diff` command, install gawk:
-- macOS: `brew install gawk`
-- Ubuntu: `sudo apt-get install gawk`
-
-### Optional: Enable SonarQube in Local Hooks
-
-By default, local pre-commit hooks run **AI review only** (fast, 2-10 seconds).
-
-To optionally enable SonarQube locally (slower, 30-60 seconds):
-
-```bash
-# Enable SonarQube and configure credentials
-ai-review config set ENABLE_SONARQUBE_LOCAL true
-ai-review config set SONAR_HOST_URL https://sonarqube.example.com
-ai-review config set SONAR_TOKEN your-sonar-token
-```
-
-**Windows:** Requires Java 11+ installed (see [SETUP_GUIDE.md](SETUP_GUIDE.md)).
-
-**Configuration:**
-```bash
-# View current config
-ai-review config
-
-# Disable SonarQube locally (back to fast mode)
-ai-review config set ENABLE_SONARQUBE_LOCAL false
-
-# Only report issues on lines you changed (default: true)
-ai-review config set SONAR_FILTER_CHANGED_LINES_ONLY true
-```
-
-**Changed Lines Filtering:** By default, SonarQube only reports issues on the exact lines you changed. Issues in unchanged code (existing/legacy issues) are filtered out and won't block your commit. This ensures you're only responsible for fixing issues in your changes, not pre-existing technical debt.
-
-**Automatic Cleanup:** Temporary SonarQube files are automatically removed after each commit.
-
-### Enable Hook in a Repository
-
-After installation, navigate to any git repository and run:
-
-```bash
-ai-review install
-```
-
-This installs the pre-commit hook that will review your staged changes before each commit.
-
-### CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `ai-review setup` | Configure AI Gateway credentials interactively |
-| `ai-review install` | Install pre-commit hook in current repository |
-| `ai-review uninstall` | Remove hook from current repository |
-| `ai-review config` | View current configuration |
-| `ai-review config get KEY` | Get a single config value |
-| `ai-review config set KEY VALUE` | Update a config value |
-| `ai-review status` | Check installation status |
-| `ai-review update` | Update to latest version |
-| `ai-review help` | Show help message |
-
-### How It Works
-
-When you run `git commit`, the hook will:
-
-1. Get your staged changes (`git diff --cached`)
-2. Filter out files matching `.aireviewignore` patterns
-3. Send the diff to your AI Gateway for review
-4. Display results with severity levels:
-   - **ERROR**: Blocks the commit (fix required)
-   - **WARNING**: Allows commit but shows warnings
-   - **INFO**: Informational suggestions
-
-### Example Output
-
-```
-AI Review analyzing your changes...
-Reviewing 45 lines of changes
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ERROR: SQL Injection vulnerability detected
-   src/utils/db.js:42
-
-WARNING: Missing error handling
-   src/api/handler.js:87
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Summary: 1 errors, 1 warnings, 0 info
-
-Commit blocked - please fix ERROR issues first
-   Use git commit --no-verify to bypass (not recommended)
-```
-
-### Bypassing the Hook
-
-To skip AI review for a single commit:
-
-```bash
-git commit --no-verify -m "your message"
-```
-
-### Configuration
-
-Config is stored at `~/.config/ai-review/config`:
-
-```bash
-AI_GATEWAY_URL="https://your-gateway.com/api"
-AI_GATEWAY_API_KEY="your-api-key"
-AI_MODEL="gemini-2.0-flash"
-AI_PROVIDER="google"
-```
-
-### Uninstalling
-
-```bash
-# Remove hook from current repository
-ai-review uninstall
-
-# Remove completely (delete config and binary)
-rm -rf ~/.config/ai-review ~/.local/bin/ai-review
-```
-
-### Windows Troubleshooting
-
-- **Java not found:** Install Java 11+ (`winget install EclipseAdoptium.Temurin.17.JDK` or `choco install temurin17`). Restart terminal. Add to PATH if needed.
-- **ai-review not found after install:** Restart your terminal so the updated PATH takes effect.
-- **Path errors in Git Bash:** Use forward slashes (e.g. `scripts/local/install.ps1`)
-
-See [SETUP_GUIDE.md](SETUP_GUIDE.md) for full Windows setup and troubleshooting.
-
-## AI Gateway Integration
-
-This action expects your AI Gateway to:
-
-### Request Format
-```json
-{
-  "ai_model": "gemini-2.0-flash",
-  "ai_provider": "google",
-  "git_diff": "diff content...",
-  "language": "javascript",
-  "review_mode": "string"
-}
-```
-
-### Response Format
-The gateway should return reviewdog-compatible diagnostic format:
-
-```json
-{
-  "source": {"name": "ai-review", "url": ""},
-  "diagnostics": [
-    {
-      "message": "Issue description",
-      "location": {
-        "path": "file.js",
-        "range": {
-          "start": {"line": 10, "column": 5},
-          "end": {"line": 10, "column": 15}
-        }
-      },
-      "severity": "ERROR",
-      "code": {"value": "issue-type", "url": ""}
-    }
-  ]
-}
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test locally
-5. Submit a pull request
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/hiiamtrong/smart-code-review/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/hiiamtrong/smart-code-review/discussions)
-
----
-
-Made by [hiiamtrong](https://github.com/hiiamtrong)
+## Troubleshooting
+
+| Error | Fix |
+|-------|-----|
+| `java: command not found` | Install Java 17, restart terminal |
+| `sonar-scanner: command not found` | Install SonarQube Scanner CLI (see Prerequisites) |
+| `You're not authorized` | Run `ai-review install` again with the correct project key |
+| `AI Gateway error: 404` | Check `AI_GATEWAY_URL` in `ai-review config show` |
+| Hook not running | Run `ai-review install` in the repo |
