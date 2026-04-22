@@ -150,14 +150,15 @@ Add these secrets to your repository (Settings → Secrets and variables → Act
 
 ### Prerequisites
 
-```
-Required tools:
-- git
+**Required:**
 
-When using SonarQube locally (optional):
-- Java 11+ (SonarQube scanner requirement)
-- sonar-scanner CLI
-```
+- `git`
+- `Java 17+` — required for SonarQube scanner ([Adoptium](https://adoptium.net/temurin/releases/?version=17))
+- `sonar-scanner` CLI — `brew install sonar-scanner` (macOS) or [download](https://docs.sonarsource.com/sonarqube/latest/analyzing-source-code/scanners/sonarscanner/)
+
+**Optional (if enabling Semgrep):**
+
+- `semgrep` — `pip install semgrep` or `brew install semgrep`
 
 ### Testing Locally
 

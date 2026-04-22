@@ -8,6 +8,8 @@
 
 - **Git** (Windows: cài [Git for Windows](https://git-scm.com/download/win) — đi kèm Git Bash)
 - **Java 17+** (cần cho SonarQube scanner)
+- **SonarQube Scanner CLI** (cần cho SonarQube analysis)
+- **Semgrep** (cần nếu bật Semgrep analysis)
 - **Terminal**: Git Bash (Windows) / Terminal (macOS) / Bash (Linux)
 
 ### Cài Java 17
@@ -41,6 +43,41 @@ Hoặc tải từ [Adoptium](https://adoptium.net/temurin/releases/?version=17) 
 </details>
 
 Verify: `java -version`
+
+### Cài SonarQube Scanner CLI
+
+**macOS:**
+```bash
+brew install sonar-scanner
+```
+
+**Linux:**
+```bash
+wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip
+unzip sonar-scanner-cli-*.zip -d ~/.sonar
+mv ~/.sonar/sonar-scanner-* ~/.sonar/sonar-scanner
+echo 'export PATH="$HOME/.sonar/sonar-scanner/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+
+**Windows:** Tải từ [SonarScanner CLI](https://docs.sonarsource.com/sonarqube/latest/analyzing-source-code/scanners/sonarscanner/) → giải nén → thêm thư mục `bin` vào PATH.
+
+Verify: `sonar-scanner --version`
+
+### Cài Semgrep (nếu bật Semgrep analysis)
+
+**macOS / Linux:**
+```bash
+pip install semgrep
+# hoặc
+brew install semgrep
+```
+
+**Windows:**
+```powershell
+pip install semgrep
+```
+
+Verify: `semgrep --version`
 
 ---
 
