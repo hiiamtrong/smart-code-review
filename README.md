@@ -31,11 +31,14 @@ Install these before setting up:
   - macOS: `brew install openjdk@17`
   - Linux: `sudo apt install openjdk-17-jdk`
   - Windows: `winget install EclipseAdoptium.Temurin.17.JDK`
+  - Verify: `java -version`
 - **SonarQube Scanner CLI**
   - macOS: `brew install sonar-scanner`
   - Others: [download](https://docs.sonarsource.com/sonarqube/latest/analyzing-source-code/scanners/sonarscanner/)
+  - Verify: `sonar-scanner --version`
 - **Semgrep** *(optional, only if enabling Semgrep analysis)*
   - `pip install semgrep` or `brew install semgrep`
+  - Verify: `semgrep --version`
 
 ## Installation
 
