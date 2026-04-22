@@ -55,8 +55,29 @@ func FindSemgrep() (string, error) {
 
 // ScanFiles runs semgrep on the given files and returns diagnostics.
 // The repoRoot is used to make output paths relative.
+// filterExistingFiles returns only files that exist on disk.
+// Semgrep exits with code 2 if any target path is missing.
+func filterExistingFiles(files []string, repoRoot string) []string {
+	var out []string
+	for _, f := range files {
+		path := f
+		if !filepath.IsAbs(path) && repoRoot != "" {
+			path = filepath.Join(repoRoot, f)
+		}
+		if _, err := os.Stat(path); err == nil {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func ScanFiles(bin string, cfg SemgrepConfig, files []string, repoRoot string) (*Result, error) {
 	if len(files) == 0 {
+		return &Result{}, nil
+	}
+
+	existing := filterExistingFiles(files, repoRoot)
+	if len(existing) == 0 {
 		return &Result{}, nil
 	}
 
@@ -68,10 +89,10 @@ func ScanFiles(bin string, cfg SemgrepConfig, files []string, repoRoot string) (
 	args := []string{
 		"--json",
 		"--config", rules,
-		"--skip-unknown-extensions", // skip files Semgrep can't parse
+		"--skip-unknown-extensions",
 		"--quiet",
 	}
-	args = append(args, files...)
+	args = append(args, existing...)
 
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.Command(bin, args...) //nolint:gosec
