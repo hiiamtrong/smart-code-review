@@ -2,6 +2,27 @@
 
 Automatically runs Semgrep, SonarQube, and AI code review on your staged changes before each commit.
 
+## Important Notes
+
+### SonarQube Artifacts
+
+- **`.scannerwork/` directory**: Created in your repo root during SonarQube analysis
+- **Automatically cleaned up**: Removed after analysis completes
+- **Already in `.gitignore`**: Won't be committed to your repository
+- **Server-side settings**: Working directory location is controlled by SonarQube server settings and cannot be overridden from client-side
+
+If you see `.scannerwork/` in your repo, it will be removed automatically after the pre-commit hook completes. If the analysis is interrupted (e.g., you cancel it), you can manually clean it up:
+
+```bash
+rm -rf .scannerwork
+```
+
+### Configuration Files
+
+- **`.aireviewignore`**: Exclude files from all analysis tools (AI, Semgrep, SonarQube)
+- **SonarQube properties**: Auto-generated in `~/.config/ai-review/projects/<id>/sonar-project.properties`
+- **No files in repo root**: All configuration is stored outside your repository to keep it clean
+
 ## Prerequisites
 
 Install these before setting up:
