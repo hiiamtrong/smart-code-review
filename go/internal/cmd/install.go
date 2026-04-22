@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 
 	"github.com/hiiamtrong/smart-code-review/internal/config"
 	"github.com/hiiamtrong/smart-code-review/internal/display"
@@ -34,13 +36,23 @@ func init() {
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	if _, err := config.LoadMerged(); err != nil {
+	cfg, err := config.LoadMerged()
+	if err != nil {
 		return fmt.Errorf("config not found — run 'ai-review setup' first")
 	}
 
 	repoRoot, err := git.GetRepoRoot()
 	if err != nil {
 		return fmt.Errorf(msgNotAGitRepo, err)
+	}
+
+	// Prompt for project-specific SonarQube key and save to project config.
+	if cfg.EnableSonarQube {
+		reader := bufio.NewReader(os.Stdin)
+		projectKey := promptStringRequired(reader, "SonarQube Project Key", cfg.SonarProjectKey)
+		if err := config.SaveProjectField("SONAR_PROJECT_KEY", projectKey); err != nil {
+			return fmt.Errorf("save project config: %w", err)
+		}
 	}
 
 	hooksDir, err := installer.GetHooksDir(repoRoot)

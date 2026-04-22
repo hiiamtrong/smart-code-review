@@ -102,10 +102,6 @@ func setupStepSonarQube(reader *bufio.Reader, cfg *config.Config) {
 	display.Bold.Println("── Step 3: SonarQube Settings ──")
 	cfg.SonarHostURL = promptStringRequired(reader, "SonarQube Host URL", cfg.SonarHostURL)
 	cfg.SonarToken = promptPasswordRequired("SonarQube Token", cfg.SonarToken)
-	if cfg.SonarProjectKey == "" {
-		cfg.SonarProjectKey = detectRepoName()
-	}
-	cfg.SonarProjectKey = promptStringRequired(reader, "SonarQube Project Key", cfg.SonarProjectKey)
 }
 
 func setupStepSemgrep(reader *bufio.Reader, cfg *config.Config) {
@@ -241,7 +237,6 @@ func printSetupSummary(cfg *config.Config) {
 	if cfg.EnableSonarQube {
 		fmt.Printf(summaryFmt, "SONAR_HOST_URL", orNotSet(cfg.SonarHostURL))
 		fmt.Printf(summaryFmt, "SONAR_TOKEN", maskIfSet(cfg.SonarToken))
-		fmt.Printf(summaryFmt, "SONAR_PROJECT_KEY", orNotSet(cfg.SonarProjectKey))
 	}
 	if cfg.EnableSemgrep {
 		fmt.Printf(summaryFmt, "SEMGREP_RULES", orNotSet(cfg.SemgrepRules))
