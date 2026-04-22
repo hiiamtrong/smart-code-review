@@ -26,6 +26,7 @@ type SonarConfig struct {
 	HostURL          string
 	Token            string
 	ProjectKey       string
+	RepoRoot         string
 	FilterChanged    bool // only report issues on changed lines
 	BlockHotspots    bool // exit 1 on security hotspots
 	IsCI             bool // true in GitHub Actions
@@ -170,6 +171,13 @@ func RunAnalysis(scannerBin string, cfg SonarConfig, stagedFiles []string) error
 				"-Dsonar.inclusions="+inclusions,
 			)
 		}
+	}
+
+	// Remove stale .scannerwork to prevent "Failed to write to sensor cache
+	// file" errors from SonarScanner when the directory exists from a prior
+	// incomplete run.
+	if cfg.RepoRoot != "" {
+		os.RemoveAll(filepath.Join(cfg.RepoRoot, ".scannerwork"))
 	}
 
 	cmd := exec.Command(scannerBin, args...) //nolint:gosec

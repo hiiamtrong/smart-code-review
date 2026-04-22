@@ -51,16 +51,6 @@ func runHook(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if !cfg.EnableAIReview {
-		display.LogInfo("AI review disabled (ENABLE_AI_REVIEW=false)")
-		return nil
-	}
-
-	if cfg.AIGatewayURL == "" || cfg.AIGatewayAPIKey == "" {
-		display.LogWarn("AI Gateway not configured — skipping review (run 'ai-review setup')")
-		return nil
-	}
-
 	diff, annotatedDiff, lang, repoRoot, gitInfo := hookPrepareDiff()
 	if diff == "" {
 		return nil
@@ -95,10 +85,14 @@ func runHook(cmd *cobra.Command, args []string) error {
 	}
 
 	// Stage 3: AI code review
-	if !blocked {
-		var aiCounts hookCounts
-		aiCounts, result = hookRunAIReview(cfg, annotatedDiff, lang, gitInfo)
-		addCounts("AI", aiCounts)
+	if !blocked && cfg.EnableAIReview {
+		if cfg.AIGatewayURL == "" || cfg.AIGatewayAPIKey == "" {
+			display.LogWarn("AI Gateway not configured — skipping review (run 'ai-review setup')")
+		} else {
+			var aiCounts hookCounts
+			aiCounts, result = hookRunAIReview(cfg, annotatedDiff, lang, gitInfo)
+			addCounts("AI", aiCounts)
+		}
 	}
 
 	return hookFinalize(result, counts, stages)
@@ -180,6 +174,7 @@ func hookRunSonarQube(cfg *config.Config, repoRoot, diff string) hookCounts {
 		HostURL:       cfg.SonarHostURL,
 		Token:         cfg.SonarToken,
 		ProjectKey:    projectKey,
+		RepoRoot:      repoRoot,
 		FilterChanged: cfg.SonarFilterChanged,
 		BlockHotspots: cfg.SonarBlockHotspots,
 	}

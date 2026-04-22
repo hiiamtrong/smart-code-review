@@ -47,3 +47,5 @@ sonar-report.json
 *.out
 
 bin
+
+*/coverage/
