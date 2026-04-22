@@ -76,15 +76,28 @@ func ScanFiles(bin string, cfg SemgrepConfig, files []string, repoRoot string) (
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.Command(bin, args...) //nolint:gosec
 	cmd.Dir = repoRoot
-	cmd.Stderr = os.Stderr
+
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 
 	out, err := cmd.Output()
 	if err != nil {
-		// Semgrep exits with code 1 when it finds issues — that's not an error.
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			// Findings present — continue parsing.
-		} else {
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
 			return nil, fmt.Errorf("semgrep failed: %w", err)
+		}
+		switch exitErr.ExitCode() {
+		case 1:
+			// Findings present — continue parsing.
+		case 2:
+			// Semgrep scan error (bad config, unreachable rules, parse error).
+			msg := strings.TrimSpace(stderr.String())
+			if msg == "" {
+				msg = exitErr.Error()
+			}
+			return nil, fmt.Errorf("semgrep scan error: %s", msg)
+		default:
+			return nil, fmt.Errorf("semgrep failed (exit %d): %s", exitErr.ExitCode(), strings.TrimSpace(stderr.String()))
 		}
 	}
 
