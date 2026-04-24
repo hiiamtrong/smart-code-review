@@ -102,6 +102,11 @@ func TestDetectFromDiff(t *testing.T) {
 			diff: "",
 			want: "plaintext",
 		},
+		{
+			name: "ts only with js in content should not match js",
+			diff: "diff --git a/app.ts b/app.ts\n+++ b/app.ts\n+import chart from 'chart.js';\n+const x = \"foo.js\";",
+			want: TypeScript,
+		},
 	}
 
 	for _, tt := range tests {

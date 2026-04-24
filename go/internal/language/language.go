@@ -88,18 +88,43 @@ var extLanguage = []struct {
 // Returns all detected languages joined by comma (e.g. "typescript,python"),
 // or "plaintext" if none matched.
 func DetectFromDiff(diff string) string {
+	files := extractDiffFiles(diff)
+	if len(files) == 0 {
+		return Unknown
+	}
+
 	seen := make(map[string]bool)
 	var langs []string
 	for _, el := range extLanguage {
-		if containsExtension(diff, el.ext) && !seen[el.lang] {
-			seen[el.lang] = true
-			langs = append(langs, el.lang)
+		for _, f := range files {
+			if strings.HasSuffix(strings.ToLower(f), el.ext) && !seen[el.lang] {
+				seen[el.lang] = true
+				langs = append(langs, el.lang)
+				break
+			}
 		}
 	}
 	if len(langs) == 0 {
 		return Unknown
 	}
 	return strings.Join(langs, ",")
+}
+
+// extractDiffFiles returns the list of filenames from "diff --git a/X b/Y" headers.
+func extractDiffFiles(diff string) []string {
+	var files []string
+	for _, line := range strings.Split(diff, "\n") {
+		if !strings.HasPrefix(line, "diff --git ") {
+			continue
+		}
+		const bSep = " b/"
+		idx := strings.LastIndex(line, bSep)
+		if idx < 0 {
+			continue
+		}
+		files = append(files, strings.TrimRight(line[idx+len(bSep):], "\r"))
+	}
+	return files
 }
 
 // DetectFromProject infers the primary language from project marker files
@@ -129,14 +154,6 @@ func DetectFromProject(root string) string {
 }
 
 // ─── internal helpers ─────────────────────────────────────────────────────────
-
-// containsExtension checks whether the diff text references any file with ext.
-func containsExtension(diff, ext string) bool {
-	// Check both "diff --git" headers and "+++ b/" lines
-	return strings.Contains(diff, ext+"\n") ||
-		strings.Contains(diff, ext+" ") ||
-		strings.Contains(diff, ext+"\r")
-}
 
 func fileExists(root, name string) bool {
 	_, err := os.Stat(filepath.Join(root, name))
