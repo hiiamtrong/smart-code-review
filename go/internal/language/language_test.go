@@ -95,12 +95,12 @@ func TestDetectFromDiff(t *testing.T) {
 		{
 			name: "unknown",
 			diff: "diff --git a/Makefile b/Makefile\n+++ b/Makefile",
-			want: Unknown,
+			want: "plaintext",
 		},
 		{
 			name: "empty diff",
 			diff: "",
-			want: Unknown,
+			want: "plaintext",
 		},
 	}
 

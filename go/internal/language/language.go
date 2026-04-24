@@ -33,7 +33,7 @@ const (
 	SCSS        = "scss"
 	Vue         = "vue"
 	Svelte      = "svelte"
-	Unknown     = "unknown"
+	Unknown     = "plaintext"
 )
 
 // extLanguage maps file extensions to language identifiers.
@@ -86,7 +86,7 @@ var extLanguage = []struct {
 // DetectFromDiff infers the language(s) by scanning file extensions
 // mentioned in unified diff headers ("diff --git a/X b/X").
 // Returns all detected languages joined by comma (e.g. "typescript,python"),
-// or "unknown" if none matched.
+// or "plaintext" if none matched.
 func DetectFromDiff(diff string) string {
 	seen := make(map[string]bool)
 	var langs []string

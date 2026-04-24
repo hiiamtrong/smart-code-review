@@ -10,6 +10,24 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
+// binaryExts are file extensions that should always be excluded from review.
+var binaryExts = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".svg": true,
+	".ico": true, ".webp": true, ".bmp": true, ".tif": true, ".tiff": true,
+	".woff": true, ".woff2": true, ".ttf": true, ".eot": true, ".otf": true,
+	".pdf": true,
+	".zip": true, ".tar": true, ".gz": true, ".bz2": true, ".xz": true, ".7z": true,
+	".jar": true, ".war": true, ".nar": true,
+	".exe": true, ".dll": true, ".so": true, ".dylib": true,
+	".wasm": true, ".class": true, ".o": true, ".a": true, ".lib": true,
+	".mp3": true, ".mp4": true, ".wav": true, ".avi": true, ".mov": true,
+	".webm": true, ".flac": true, ".ogg": true,
+	".db": true, ".sqlite": true, ".lock": true,
+	".out": true, ".bin": true, ".prof": true,
+	".min.js": true, ".min.css": true,
+	".bundle.js": true, ".bundle.css": true, ".chunk.js": true,
+}
+
 // LoadIgnorePatterns reads and parses a .aireviewignore file.
 // Returns an empty slice (not an error) if the file does not exist.
 // Lines starting with # and blank lines are ignored.
@@ -77,7 +95,7 @@ func FilterDiff(diff string, patterns []string) (string, int) {
 	var out strings.Builder
 	ignoredCount := 0
 	for _, b := range blocks {
-		if matchesAny(b.file, patterns) {
+		if isBinaryExt(b.file) || matchesAny(b.file, patterns) {
 			ignoredCount++
 		} else {
 			out.WriteString(b.content.String())
@@ -124,4 +142,17 @@ func matchesAny(file string, patterns []string) bool {
 func match(file, pattern string) bool {
 	ok, _ := doublestar.Match(pattern, file)
 	return ok
+}
+
+// isBinaryExt reports whether the file has a known binary extension.
+func isBinaryExt(file string) bool {
+	return binaryExts[strings.ToLower(strExt(file))]
+}
+
+// strExt returns the extension of a filename (including dot).
+func strExt(file string) string {
+	if i := strings.LastIndex(file, "."); i >= 0 {
+		return file[i:]
+	}
+	return ""
 }

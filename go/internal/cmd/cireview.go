@@ -88,7 +88,7 @@ func runCIReview(cmd *cobra.Command, args []string) error {
 	// ── 4. Detect language ────────────────────────────────────────────────────
 
 	lang := language.DetectFromDiff(annotatedDiff)
-	if lang == "unknown" {
+	if lang == "plaintext" {
 		lang = language.DetectFromProject(repoRoot)
 	}
 	display.LogInfo(fmt.Sprintf("Language: %s", lang))

@@ -132,7 +132,7 @@ func hookPrepareDiff() (rawDiff, annotated, lang, repoRoot string, gitInfo git.G
 
 	annotated = git.AnnotateLineNumbers(filteredDiff)
 	lang = language.DetectFromDiff(annotated)
-	if lang == "unknown" {
+	if lang == "plaintext" {
 		lang = language.DetectFromProject(repoRoot)
 	}
 	display.LogInfo(fmt.Sprintf("Detected language: %s", lang))
