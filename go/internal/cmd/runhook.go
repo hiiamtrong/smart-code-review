@@ -142,7 +142,7 @@ func hookPrepareDiff() (rawDiff, annotated, lang, repoRoot string, gitInfo git.G
 		gitInfo = git.GitInfo{CommitHash: "staged"}
 	}
 
-	rawDiff = diff
+	rawDiff = filteredDiff
 	return
 }
 
