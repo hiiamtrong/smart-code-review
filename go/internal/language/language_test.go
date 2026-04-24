@@ -28,9 +28,39 @@ func TestDetectFromDiff(t *testing.T) {
 			want: JavaScript,
 		},
 		{
-			name: "typescript wins over javascript",
+			name: "multiple languages",
+			diff: "diff --git a/App.tsx b/App.tsx\ndiff --git a/helper.py b/helper.py",
+			want: "typescript,python",
+		},
+		{
+			name: "typescript and javascript",
 			diff: "diff --git a/App.tsx b/App.tsx\ndiff --git a/helper.js b/helper.js",
+			want: "typescript,javascript",
+		},
+		{
+			name: "dedup same language",
+			diff: "diff --git a/a.ts b/a.ts\ndiff --git a/b.tsx b/b.tsx",
 			want: TypeScript,
+		},
+		{
+			name: "c and rust",
+			diff: "diff --git a/main.rs b/main.rs\ndiff --git a/util.c b/util.c",
+			want: "c,rust",
+		},
+		{
+			name: "vue file",
+			diff: "diff --git a/App.vue b/App.vue",
+			want: Vue,
+		},
+		{
+			name: "shell script",
+			diff: "diff --git a/deploy.sh b/deploy.sh",
+			want: Shell,
+		},
+		{
+			name: "yaml config",
+			diff: "diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml",
+			want: YAML,
 		},
 		{
 			name: "python",
