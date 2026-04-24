@@ -49,3 +49,5 @@ sonar-report.json
 bin
 
 */coverage/
+
+dist

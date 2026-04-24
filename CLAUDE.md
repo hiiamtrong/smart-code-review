@@ -1,101 +1,111 @@
-# AI DevKit Rules
+# Smart Code Review
 
-## Project Context
-This project uses ai-devkit for structured AI-assisted development. Phase documentation is located in `docs/ai/`.
+Pre-commit code review tool chạy AI + Semgrep + SonarQube analysis trên staged changes.
 
-## Documentation Structure
-- `docs/ai/requirements/` - Problem understanding and requirements
-- `docs/ai/design/` - System architecture and design decisions (include mermaid diagrams)
-- `docs/ai/planning/` - Task breakdown and project planning
-- `docs/ai/implementation/` - Implementation guides and notes
-- `docs/ai/testing/` - Testing strategy and test cases
-- `docs/ai/deployment/` - Deployment and infrastructure docs
-- `docs/ai/monitoring/` - Monitoring and observability setup
+## Tech Stack
 
-## Code Style & Standards
-- Follow the project's established code style and conventions
-- Write clear, self-documenting code with meaningful variable names
-- Add comments for complex logic or non-obvious decisions
+- **Go 1.25** — binary chính, build bằng goreleaser
+- **Cobra** — CLI framework (`github.com/spf13/cobra`)
+- **doublestar v4** — gitignore-style glob matching cho `.aireviewignore`
+- **fatih/color** — terminal color output
+- **goreleaser** — cross-platform build & GitHub Release
+- **GitHub Actions** — CI/CD via composite action (`action.yml`)
 
-## Development Workflow
-- Review phase documentation in `docs/ai/` before implementing features
-- Keep requirements, design, and implementation docs updated as the project evolves
-- Reference the planning doc for task breakdown and priorities
-- Copy the testing template (`docs/ai/testing/README.md`) before creating feature-specific testing docs
+External tools (không bundled, cần cài riêng):
 
-## AI Interaction Guidelines
-- When implementing features, first check relevant phase documentation
-- For new features, start with requirements clarification
-- Update phase docs when significant changes or decisions are made
+- **Semgrep** — static analysis
+- **SonarQube Scanner** — server-based analysis
+- **reviewdog** — post diagnostics lên GitHub PR
 
-## Skills (Extend Your Capabilities)
-Skills are packaged capabilities that teach you new competencies, patterns, and best practices. Check for installed skills in the project's skill directory and use them to enhance your work.
+## Project Structure
 
-### Using Installed Skills
-1. **Check for skills**: Look for `SKILL.md` files in the project's skill directory
-2. **Read skill instructions**: Each skill contains detailed guidance on when and how to use it
-3. **Apply skill knowledge**: Follow the patterns, commands, and best practices defined in the skill
+```text
+├── go/                          # Go source code
+│   ├── cmd/ai-review/           # Entry point (main.go)
+│   ├── internal/
+│   │   ├── cmd/                 # CLI commands (run-hook, ci-review, setup, config, install, update)
+│   │   ├── config/              # Config loading & merging (env + YAML + git config)
+│   │   ├── display/             # Terminal output formatting
+│   │   ├── filter/              # .aireviewignore pattern matching (doublestar)
+│   │   ├── gateway/             # AI Gateway HTTP client (SSE streaming + sync)
+│   │   ├── git/                 # Git operations (diff, repo root, metadata)
+│   │   ├── installer/           # Hook installation (pre-commit framework support)
+│   │   ├── language/            # Language detection from diff & project files
+│   │   ├── reviewdog/           # reviewdog integration & rdjson output
+│   │   ├── semgrep/             # Semgrep scanner wrapper
+│   │   ├── sonarqube/           # SonarQube analysis pipeline
+│   │   └── updater/             # Self-update via GitHub Releases
+│   ├── e2e/                     # End-to-end tests
+│   └── Makefile                 # build, test, vet, lint, install
+├── scripts/                     # Legacy bash scripts (migrated to Go)
+├── docs/ai/                     # AI devkit phase docs
+├── .goreleaser.yml              # Cross-platform build config
+├── action.yml                   # GitHub Actions composite action
+└── VERSION                      # Current version (synced by CI)
+```
 
-### Key Installed Skills
-- **memory**: Use AI DevKit's memory service via CLI commands when MCP is unavailable. Read the skill for detailed `memory store` and `memory search` command usage.
+## Setup
 
-### When to Reference Skills
-- Before implementing features that match a skill's domain
-- When MCP tools are unavailable but skill provides CLI alternatives
-- To follow established patterns and conventions defined in skills
+```bash
+# Prerequisites: Go 1.25+, Semgrep (optional), SonarQube Scanner (optional)
 
-## Knowledge Memory (Always Use When Helpful)
-The AI assistant should proactively use knowledge memory throughout all interactions.
+cd go
+make install          # Build & install to ~/.local/bin/ai-review
+ai-review setup       # Interactive config (AI Gateway, Semgrep, SonarQube)
+ai-review install     # Install git pre-commit hook
+```
 
-> **Tip**: If MCP is unavailable, use the **memory skill** for detailed CLI command reference.
+## Testing & Running Tests
 
-### When to Search Memory
-- Before starting any task, search for relevant project conventions, patterns, or decisions
-- When you need clarification on how something was done before
-- To check for existing solutions to similar problems
-- To understand project-specific terminology or standards
+```bash
+cd go
 
-**How to search**:
-- Use `memory.searchKnowledge` MCP tool with relevant keywords, tags, and scope
-- If MCP tools are unavailable, use `npx ai-devkit@latest memory search` CLI command (see memory skill for details)
-- Example: Search for "authentication patterns" when implementing auth features
+# Run all tests
+make test
+# Equivalent to: go test ./... -count=1 -timeout 120s
 
-### When to Store Memory
-- After making important architectural or design decisions
-- When discovering useful patterns or solutions worth reusing
-- If the user explicitly asks to "remember this" or save guidance
-- When you establish new conventions or standards for the project
+# Run specific package
+go test ./internal/filter/ -v
 
-**How to store**:
-- Use `memory.storeKnowledge` MCP tool
-- If MCP tools are unavailable, use `npx ai-devkit@latest memory store` CLI command (see memory skill for details)
-- Include clear title, detailed content, relevant tags, and appropriate scope
-- Make knowledge specific and actionable, not generic advice
+# Run specific test
+go test ./internal/cmd/ -v -run TestHookPrepareDiff -count=1
 
-### Memory Best Practices
-- **Be Proactive**: Search memory before asking the user repetitive questions
-- **Be Specific**: Store knowledge that's actionable and reusable
-- **Use Tags**: Tag knowledge appropriately for easy discovery (e.g., "api", "testing", "architecture")
-- **Scope Appropriately**: Use `global` for general patterns, `project:<name>` for project-specific knowledge
+# Pre-push check (vet + test + build)
+make check
 
-## Testing & Quality
-- Write tests alongside implementation
-- Follow the testing strategy defined in `docs/ai/testing/`
-- Use `/writing-test` to generate unit and integration tests targeting 100% coverage
-- Ensure code passes all tests before considering it complete
+# Coverage
+go test ./... -coverprofile=coverage.out
+go tool cover -func=coverage.out
+```
 
-## Documentation
-- Update phase documentation when requirements or design changes
-- Keep inline code comments focused and relevant
-- Document architectural decisions and their rationale
-- Use mermaid diagrams for any architectural or data-flow visuals (update existing diagrams if needed)
-- Record test coverage results and outstanding gaps in `docs/ai/testing/`
+Test conventions:
 
-## Key Commands
-When working on this project, you can run commands to:
-- Understand project requirements and goals (`review-requirements`)
-- Review architectural decisions (`review-design`)
-- Plan and execute tasks (`execute-plan`)
-- Verify implementation against design (`check-implementation`)
-- Writing tests (`writing-test`)
-- Perform structured code reviews (`code-review`)
+- File naming: `*_test.go` trong cùng package
+- Test files cùng thư mục với source (không tách `test/` riêng)
+- E2E tests: `go/e2e/e2e_test.go`
+
+## Release
+
+```bash
+# 1. Bump version
+echo "X.Y.Z" > VERSION
+git add VERSION && git commit -m "chore: sync VERSION to X.Y.Z [skip ci]"
+
+# 2. Tag
+git tag vX.Y.Z
+
+# 3. Push
+git push origin main && git push origin vX.Y.Z
+
+# 4. Build & publish (goreleaser)
+GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
+```
+
+Platforms: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64.
+
+## Key Conventions
+
+- Config precedence: env vars > YAML config > git config
+- `.aireviewignore` dùng gitignore-style glob syntax, filter file cho cả Semgrep, SonarQube và AI review
+- Hook exit code 1 = block commit, 0 = allow
+- Version injected at build time via `-ldflags`
