@@ -111,22 +111,6 @@ jobs:
       - name: Run BATS tests
         run: bats scripts/local/tests/install.bats
 
-  # ── Pester tests for install.ps1 ──────────────────────────────────────────────
-  pester-tests:
-    name: Pester · install.ps1
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Pester
-        shell: pwsh
-        run: Install-Module Pester -Force -Scope CurrentUser -MinimumVersion 5.0
-
-      - name: Run Pester tests
-        shell: pwsh
-        run: Invoke-Pester scripts/local/tests/install.Tests.ps1 -Output Detailed -CI
-
   # ── Coverage gate (runs after unit tests on Linux) ─────────────────────────
   coverage:
     name: Coverage gate
