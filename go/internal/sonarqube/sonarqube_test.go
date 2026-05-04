@@ -138,8 +138,8 @@ func TestDedupedDirs_rootFileMixedWithSubdirs(t *testing.T) {
 	// Root files are already covered by sonar.inclusions.
 	files := []string{"package.json", "docs/API_DOCUMENTATION.md", "src/lib/api.ts"}
 	result := dedupedDirs(files)
-	// filepath.Dir uses OS-native separators (backslash on Windows).
-	srcLib := filepath.Join("src", "lib")
+	// dedupedDirs emits forward slashes for Sonar (see sonarSlashDir).
+	srcLib := filepath.ToSlash(filepath.Join("src", "lib"))
 	if !strings.Contains(result, "docs") || !strings.Contains(result, srcLib) {
 		t.Errorf("expected docs and %s, got %q", srcLib, result)
 	}
