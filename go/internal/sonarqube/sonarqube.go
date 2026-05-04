@@ -18,21 +18,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hiiamtrong/smart-code-review/internal/display"
 	"github.com/hiiamtrong/smart-code-review/internal/gateway"
 )
 
 // SonarConfig holds the parameters needed to run an analysis.
 type SonarConfig struct {
-	HostURL          string
-	Token            string
-	ProjectKey       string
-	RepoRoot         string
-	FilterChanged    bool // only report issues on changed lines
-	BlockHotspots    bool // exit 1 on security hotspots
-	IsCI             bool // true in GitHub Actions
-	BaseBranch       string
-	PRNumber         string
-	PRHeadBranch     string
+	HostURL       string
+	Token         string
+	ProjectKey    string
+	RepoRoot      string
+	FilterChanged bool // only report issues on changed lines
+	BlockHotspots bool // exit 1 on security hotspots
+	IsCI          bool // true in GitHub Actions
+	BaseBranch    string
+	PRNumber      string
+	PRHeadBranch  string
 }
 
 // Result is the structured outcome of a completed analysis.
@@ -172,6 +173,8 @@ func RunAnalysis(scannerBin string, cfg SonarConfig, stagedFiles []string) error
 			)
 		}
 	}
+
+	display.LogInfo(fmt.Sprintf("Running sonar-scanner with args: %v", args))
 
 	// Remove stale .scannerwork to prevent "Failed to write to sensor cache
 	// file" errors from SonarScanner when the directory exists from a prior
@@ -494,6 +497,15 @@ func exists(path string) bool {
 	return err == nil
 }
 
+// sonarSlashDir converts a directory path to forward slashes for Sonar and for
+// parent/child comparisons. Mixed or OS-specific separators (e.g. Windows
+// backslashes from filepath.Dir) must not break nested-path deduping —
+// otherwise sonar.sources lists overlapping roots and SonarScanner errors with
+// "can't be indexed twice".
+func sonarSlashDir(dir string) string {
+	return filepath.ToSlash(filepath.Clean(dir))
+}
+
 func dedupedDirs(files []string) string {
 	seen := make(map[string]bool)
 	var dirs []string
@@ -506,6 +518,7 @@ func dedupedDirs(files []string) string {
 			// entire project tree (including node_modules, vendor, etc.).
 			continue
 		}
+		d = sonarSlashDir(d)
 		if !seen[d] {
 			seen[d] = true
 			dirs = append(dirs, d)
